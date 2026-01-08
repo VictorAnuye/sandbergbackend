@@ -10,7 +10,7 @@ import {
   getPendingBookings,
   checkInBooking,
   checkOutBooking,
-  getAdminOverview
+  getAdminOverview,
 } from "../controllers/bookingController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
