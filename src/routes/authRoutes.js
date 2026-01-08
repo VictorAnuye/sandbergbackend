@@ -16,6 +16,7 @@ router.post("/logout", protect, logout);
 router.post("/forgot-password", forgotPassword);
 router.post("/validate-reset-code", validateResetCode);
 router.post("/reset-password", resetPassword);
+router.get("/me", protect, getCurrentUser)
 // In authRoutes.js
 router.post("/logout", protect, async (req, res) => {
   req.user.currentToken = null;

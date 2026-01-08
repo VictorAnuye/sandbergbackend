@@ -220,3 +220,19 @@ export const resetPassword = async (req, res) => {
   res.status(200).json({ message: "Password has been reset successfully" });
 };
 
+// controllers/authController.js
+export const getCurrentUser = async (req, res) => {
+  try {
+    // req.user is set in authMiddleware after token verification
+    const user = req.user
+    if (!user) return res.status(404).json({ message: "User not found" })
+
+    res.status(200).json({
+      name: user.fullName,
+      role: user.role, // e.g., "receptionist" or "admin"
+      email: user.email,
+    })
+  } catch (err) {
+    res.status(500).json({ message: "Server error" })
+  }
+}
