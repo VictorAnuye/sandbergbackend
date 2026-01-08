@@ -136,16 +136,19 @@ export const checkOut = async (req, res) => {
 
 
 export const getAllBookings = async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ message: "Admins only" });
+  try {
+    // Fetch all bookings from DB
+    const bookings = await Booking.find()
+      .populate("room", "roomNumber roomType")      // Include room details
+      .populate("handledBy", "fullName email");     // Include user who handled the booking
+
+    res.json(bookings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch bookings" });
   }
-
-  const bookings = await Booking.find()
-    .populate("room", "roomNumber roomType")
-    .populate("handledBy", "fullName email");
-
-  res.json(bookings);
 };
+
 
 export const createOnlineBooking = async (req, res) => {
   try {
