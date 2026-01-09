@@ -99,25 +99,32 @@ for (const room of rooms) {
 
 
 export const checkIn = async (req, res) => {
-  const booking = await Booking.findById(req.params.id).populate("room");
+  const { bookingId } = req.params;
 
-  if (!booking) return res.status(404).json({ message: "Booking not found" });
+  const booking = await Booking.findById(bookingId).populate("room");
+
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
 
   if (booking.status !== "reserved") {
-    return res.status(400).json({ message: "Booking not eligible for check-in" });
+    return res
+      .status(400)
+      .json({ message: "Booking not eligible for check-in" });
   }
 
   booking.status = "checked-in";
   await booking.save();
 
-  booking.room.status = "occupied";
-  await booking.room.save();
-
-  res.json({ message: "Guest checked in", booking });
+  res.json({
+    message: "Guest checked in successfully",
+    booking,
+  });
 };
 
+
 export const checkOut = async (req, res) => {
-  const booking = await Booking.findById(req.params.id).populate("room");
+  const booking = await Booking.findById(req.params.bookingId).populate("room");
 
   if (!booking) return res.status(404).json({ message: "Booking not found" });
 
@@ -295,7 +302,7 @@ export const cancelBooking = async (req, res) => {
     return res.status(403).json({ message: "Receptionists only" });
   }
 
-  const booking = await Booking.findById(req.params.id).populate("room");
+  const booking = await Booking.findById(req.params.bookingId).populate("room");
 
   if (!booking) {
     return res.status(404).json({ message: "Booking not found" });
