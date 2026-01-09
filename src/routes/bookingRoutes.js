@@ -22,7 +22,6 @@ router.patch("/:bookingId/check-out", protect, checkOut);
 router.patch("/:bookingId/cancel", protect, cancelBooking);
 router.get("/", protect, getAllBookings);
 router.get("/pending", protect, getPendingBookings); 
-router.patch("/:bookingId/cancel", protect, cancelBooking);
 router.patch("/:bookingId/confirm", protect, confirmBooking);
 router.post("/online", createOnlineBooking);
 router.post("/:bookingId/check-in", protect, authorize("receptionist"), checkInBooking);
