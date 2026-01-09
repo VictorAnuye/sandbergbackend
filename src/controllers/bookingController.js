@@ -113,14 +113,20 @@ export const checkIn = async (req, res) => {
       .json({ message: "Booking not eligible for check-in" });
   }
 
+  // ✅ Update booking
   booking.status = "checked-in";
   await booking.save();
+
+  // ✅ UPDATE ROOM STATUS
+  booking.room.status = "occupied";
+  await booking.room.save();
 
   res.json({
     message: "Guest checked in successfully",
     booking,
   });
 };
+
 
 
 export const checkOut = async (req, res) => {
