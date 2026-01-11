@@ -4,10 +4,14 @@ import Notification from "../models/notification.js";
 
 export const createBooking = async (req, res) => {
   try {
+    // 1️⃣ Authorization
     if (req.user.role !== "receptionist") {
-      return res.status(403).json({ message: "Only receptionists can create bookings" });
+      return res
+        .status(403)
+        .json({ message: "Only receptionists can create bookings" });
     }
 
+    // 2️⃣ Extract body
     const {
       guestFullName,
       guestEmail,
@@ -17,10 +21,18 @@ export const createBooking = async (req, res) => {
       checkOutDate,
     } = req.body;
 
-    if (!guestFullName || !guestPhone || !numberOfGuests || !checkInDate || !checkOutDate) {
+    // 3️⃣ Validate required fields
+    if (
+      !guestFullName ||
+      !guestPhone ||
+      !numberOfGuests ||
+      !checkInDate ||
+      !checkOutDate
+    ) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // 4️⃣ Validate dates
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
@@ -28,49 +40,49 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ message: "Invalid booking dates" });
     }
 
-    console.log("Searching for available rooms...");
-    console.log("Requested dates:", checkIn, "to", checkOut);
+    console.log("🔍 Searching for available rooms...");
+    console.log("Requested dates:", checkIn, "→", checkOut);
 
-// Get all rooms
-const rooms = await Room.find({});
-console.log(`Found ${rooms.length} rooms in DB.`);
+    // 5️⃣ Fetch all rooms (DO NOT filter by room.status)
+    const rooms = await Room.find({});
+    console.log(`Found ${rooms.length} rooms in DB`);
 
-let selectedRoom = null;
+    let selectedRoom = null;
 
-for (const room of rooms) {
-  console.log(`Checking room ${room.number} (${room._id}) for conflicts...`);
+    // 6️⃣ Find a room without date conflicts
+    for (const room of rooms) {
+      console.log(`Checking room ${room.roomNumber} for conflicts...`);
 
-  // Check for overlapping bookings
-  const conflict = await Booking.findOne({
-    room: room._id,
-    status: { $in: ["reserved", "checked-in"] },
-    checkInDate: { $lt: checkOut },
-    checkOutDate: { $gt: checkIn },
-  });
+      const conflict = await Booking.findOne({
+        room: room._id,
+        status: { $in: ["reserved", "checked-in"] },
+        checkInDate: { $lt: checkOut },
+        checkOutDate: { $gt: checkIn },
+      });
 
-  if (conflict) {
-    console.log(
-      `Conflict found with booking ${conflict._id}:`,
-      `Status: ${conflict.status},`,
-      `CheckIn: ${conflict.checkInDate},`,
-      `CheckOut: ${conflict.checkOutDate}`
-    );
-  } else {
-    console.log(`No conflict found. Selecting room ${room.number}.`);
-    selectedRoom = room;
-    break;
-  }
-}
-
-
-    if (!selectedRoom) {
-      console.log("No available rooms found for these dates.");
-      return res.status(409).json({ message: "No available rooms for selected dates" });
+      if (conflict) {
+        console.log(
+          `❌ Conflict with booking ${conflict._id} (${conflict.checkInDate} → ${conflict.checkOutDate})`
+        );
+      } else {
+        console.log(`✅ Room ${room.roomNumber} is available for these dates`);
+        selectedRoom = room;
+        break;
+      }
     }
 
+    // 7️⃣ No room available
+    if (!selectedRoom) {
+      console.log("🚫 No available rooms for selected dates");
+      return res
+        .status(409)
+        .json({ message: "No available rooms for selected dates" });
+    }
+
+    // 8️⃣ Create booking (FUTURE RESERVATION)
     const booking = await Booking.create({
       room: selectedRoom._id,
-      roomNumber: selectedRoom.number,
+      roomNumber: selectedRoom.roomNumber,
       guestFullName,
       guestEmail,
       guestPhone,
@@ -82,20 +94,22 @@ for (const room of rooms) {
       status: "reserved",
     });
 
-    selectedRoom.status = "reserved";
-    await selectedRoom.save();
+    console.log(
+      `✅ Booking created: Room ${selectedRoom.roomNumber} reserved from ${checkIn} to ${checkOut}`
+    );
 
-    console.log(`Booking created successfully for room ${selectedRoom.number}`);
+    // 9️⃣ IMPORTANT: DO NOT TOUCH room.status here
 
     res.status(201).json({
       message: "Booking created successfully",
       booking,
     });
   } catch (error) {
-    console.error("Error creating booking:", error);
+    console.error("🔥 Error creating booking:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 export const checkIn = async (req, res) => {
@@ -113,11 +127,23 @@ export const checkIn = async (req, res) => {
       .json({ message: "Booking not eligible for check-in" });
   }
 
-  // ✅ Update booking
+  // 🛑 DATE GUARD — VERY IMPORTANT
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const checkInDate = new Date(booking.checkInDate);
+  checkInDate.setHours(0, 0, 0, 0);
+
+  if (today < checkInDate) {
+    return res.status(400).json({
+      message: "Cannot check in before the reserved check-in date",
+    });
+  }
+
+  // ✅ Proceed with check-in
   booking.status = "checked-in";
   await booking.save();
 
-  // ✅ UPDATE ROOM STATUS
   booking.room.status = "occupied";
   await booking.room.save();
 
@@ -129,38 +155,45 @@ export const checkIn = async (req, res) => {
 
 
 
+
 export const checkOut = async (req, res) => {
-  const booking = await Booking.findById(req.params.bookingId).populate("room");
-
-  if (!booking) return res.status(404).json({ message: "Booking not found" });
-
-  if (booking.status !== "checked-in") {
-    return res.status(400).json({ message: "Booking not eligible for check-out" });
-  }
-
-  booking.status = "checked-out";
-  await booking.save();
-
-  booking.room.status = "available";
-  await booking.room.save();
-
-  res.json({ message: "Guest checked out", booking });
-};
-
-
-export const getAllBookings = async (req, res) => {
   try {
-    // Fetch all bookings from DB
-    const bookings = await Booking.find()
-      .populate("room", "roomNumber roomType")      // Include room details
-      .populate("handledBy", "fullName email");     // Include user who handled the booking
+    const { bookingId } = req.params;
 
-    res.json(bookings);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch bookings" });
+    // 1️⃣ Find booking + room
+    const booking = await Booking.findById(bookingId).populate("room");
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    // 2️⃣ Must be checked-in
+    if (booking.status !== "checked-in") {
+      return res.status(400).json({
+        message: "Booking not eligible for check-out",
+      });
+    }
+
+    // 3️⃣ Update booking
+    booking.status = "checked-out";
+    await booking.save();
+
+    // 4️⃣ Free the room (important with future reservations)
+    booking.room.status = "available";
+    booking.room.lastUpdatedBy = req.user._id;
+    booking.room.lastUpdatedAt = new Date();
+    await booking.room.save();
+
+    res.json({
+      message: "Guest checked out successfully",
+      booking,
+    });
+  } catch (error) {
+    console.error("🔥 Check-out error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 export const createOnlineBooking = async (req, res) => {
