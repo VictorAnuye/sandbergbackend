@@ -51,11 +51,21 @@ export const createBooking = async (req, res) => {
 
     // 6️⃣ Find a room without date conflicts
     for (const room of rooms) {
+      // ❌ Skip rooms under maintenance
+      if (room.status === "maintenance") {
+        console.log(`⚠️ Room ${room.roomNumber} under maintenance`);
+        continue;
+      }
+
       console.log(`Checking room ${room.roomNumber} for conflicts...`);
 
       const conflict = await Booking.findOne({
         room: room._id,
-        status: { $in: ["reserved", "checked-in"] },
+
+        // ✅ FIX: pending bookings MUST block availability
+        status: { $in: ["pending", "reserved", "checked-in"] },
+
+        // ✅ Proper date overlap check
         checkInDate: { $lt: checkOut },
         checkOutDate: { $gt: checkIn },
       });
@@ -109,6 +119,7 @@ export const createBooking = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 
@@ -225,34 +236,78 @@ export const createOnlineBooking = async (req, res) => {
       selectedRoomId, // internal, not from user
     } = req.body;
 
+    // 1️⃣ Validate required fields
+    if (
+      !guestFullName ||
+      !guestPhone ||
+      !numberOfGuests ||
+      !checkInDate ||
+      !checkOutDate
+    ) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // 2️⃣ Validate dates
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+
+    if (checkOut <= checkIn) {
+      return res.status(400).json({ error: "Invalid booking dates" });
+    }
+
     let roomNumber = null;
 
-    // If frontend/system selected a room, get its roomNumber
+    // 3️⃣ If a room is pre-selected, validate availability
     if (selectedRoomId) {
       const room = await Room.findById(selectedRoomId);
+
       if (!room) {
         return res.status(400).json({ error: "Selected room not found" });
       }
+
+      // ❌ Block maintenance rooms
+      if (room.status === "maintenance") {
+        return res
+          .status(409)
+          .json({ error: "Selected room is under maintenance" });
+      }
+
+      // ❌ Prevent double booking (same logic as reception)
+      const conflict = await Booking.findOne({
+        room: room._id,
+        status: { $in: ["pending", "reserved", "checked-in"] },
+        checkInDate: { $lt: checkOut },
+        checkOutDate: { $gt: checkIn },
+      });
+
+      if (conflict) {
+        return res.status(409).json({
+          error: "Selected room is not available for the chosen dates",
+        });
+      }
+
       roomNumber = room.roomNumber;
     }
 
+    // 4️⃣ Create booking
     const booking = await Booking.create({
       guestFullName,
       guestEmail,
       guestPhone,
       numberOfGuests,
-      checkInDate,
-      checkOutDate,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
       source: "online",
       status: "pending",
-      room: selectedRoomId || null,  // store room ObjectId if assigned
-      roomNumber,                    // store human-readable roomNumber
+      room: selectedRoomId || null,
+      roomNumber,
     });
 
-     await Notification.create({
+    // 5️⃣ Notify admin/reception
+    await Notification.create({
       type: "ONLINE_BOOKING",
       booking: booking._id,
-      message: `New online booking from ${booking.guestName}`,
+      message: `New online booking from ${booking.guestFullName}`,
     });
 
     res.status(201).json({
