@@ -2,26 +2,32 @@ import Room from "../models/Rooms.js";
 
 // CREATE ROOM (ADMIN ONLY)
 export const createRoom = async (req, res) => {
-  const { roomNumber, roomType, pricePerNight, description } = req.body;
+  try {
+    const { roomNumber, roomType, pricePerNight, description } = req.body;
 
-  if (!roomNumber || !pricePerNight) {
-    return res.status(400).json({ message: "Room number and price required" });
+    if (!roomNumber || !pricePerNight) {
+      return res.status(400).json({ message: "Room number and price required" });
+    }
+
+    const existingRoom = await Room.findOne({ roomNumber });
+    if (existingRoom) {
+      return res.status(400).json({ message: "Room number already exists" });
+    }
+
+    const room = await Room.create({
+      roomNumber,
+      roomType,
+      pricePerNight,
+      description,
+    });
+
+    res.status(201).json({ message: "Room created successfully", room });
+  } catch (err) {
+    console.error("Error creating room:", err);
+    res.status(500).json({ message: err.message || "Server error" });
   }
-
-  const existingRoom = await Room.findOne({ roomNumber });
-  if (existingRoom) {
-    return res.status(400).json({ message: "Room number already exists" });
-  }
-
-  const room = await Room.create({
-    roomNumber,
-    roomType,
-    pricePerNight,
-    description,
-  });
-
-  res.status(201).json({ message: "Room created successfully", room });
 };
+
 
 // UPDATE ROOM (ADMIN ONLY - info updates)
 export const updateRoom = async (req, res) => {
