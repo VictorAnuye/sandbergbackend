@@ -52,7 +52,6 @@ export const getNotifications = async (req, res) => {
 };
 
 // controllers/notificationController.js
-import Booking from "../models/booking.js"
 
 export const getNotificationCount = async (req, res) => {
   try {
