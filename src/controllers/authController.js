@@ -57,6 +57,8 @@ export const login = async (req, res) => {
 
   // ✅ Enforce single session
   user.currentToken = token;
+  user.isOnline = true
+user.lastLogin = new Date()
   await user.save();
 
   res.json({
@@ -79,6 +81,8 @@ export const logout = async (req, res) => {
 
   // Invalidate token
   user.currentToken = null;
+  user.isOnline = false
+
   await user.save();
 
   res.json({ message: "Logged out successfully" });
@@ -237,14 +241,34 @@ export const getCurrentUser = async (req, res) => {
   }
 }
 
+
+
+/**
+ * Get currently online receptionists
+ */
 export const getOnlineReceptionists = async (req, res) => {
   try {
-    const receptionists = await User.find({
-      role: "receptionist",
-      isOnline: true
-    }).select("fullName email lastLogin") // only return relevant fields
+    console.log("🔹 Fetching online receptionists...")
 
-    res.json(receptionists)
+    // Step 1: Fetch all receptionists
+    const allReceptionists = await User.find({ role: "receptionist" })
+    console.log(`👥 Total receptionists in DB: ${allReceptionists.length}`)
+    allReceptionists.forEach((r) => {
+      console.log(`- ${r.fullName} | isOnline: ${r.isOnline} | lastLogin: ${r.lastLogin}`)
+    })
+
+    // Step 2: Filter online receptionists
+    const onlineReceptionists = await User.find({
+      role: "receptionist",
+      isOnline: true,
+    }).select("fullName email lastLogin")
+
+    console.log(`⚡ Receptionists with isOnline=true: ${onlineReceptionists.length}`)
+    onlineReceptionists.forEach((r) =>
+      console.log(`> ${r.fullName} | ${r.email} | lastLogin: ${r.lastLogin}`)
+    )
+
+    res.json(onlineReceptionists)
   } catch (err) {
     console.error("❌ Error fetching online receptionists:", err)
     res.status(500).json({ message: "Failed to fetch online receptionists" })
