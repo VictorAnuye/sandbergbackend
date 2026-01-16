@@ -221,6 +221,9 @@ export const getAllBookings = async (req, res) => {
     let start = null;
     let end = null;
 
+    // ---------------------------
+    // 1️⃣ Determine date range
+    // ---------------------------
     switch (range) {
       case "today":
         start = now.startOf("day").toDate();
@@ -240,42 +243,40 @@ export const getAllBookings = async (req, res) => {
         break;
     }
 
-    // Shared date filter
-    const dateFilter = start && end
-      ? { checkInDate: { $gte: start, $lte: end } }
-      : {};
+    // ---------------------------
+    // 2️⃣ Build date filters
+    // ---------------------------
+    const checkInFilter = start && end ? { checkInDate: { $gte: start, $lte: end } } : {};
+    const checkOutFilter = start && end ? { checkOutDate: { $gte: start, $lte: end } } : {};
 
-    // 1️⃣ Fetch bookings
-    const bookings = await Booking.find(dateFilter)
+    // ---------------------------
+    // 3️⃣ Fetch bookings list
+    // ---------------------------
+    const bookings = await Booking.find(checkInFilter)
       .populate("room", "roomNumber roomType")
       .populate("handledBy", "fullName email")
       .sort({ createdAt: -1 });
 
-          const totalActiveBookings = await Booking.countDocuments({ status:"checked-in" });
-    const totalCheckedIn = await Booking.countDocuments({ status: "checked-in" });
-    const totalCheckedOut = await Booking.countDocuments({ status: "checked-out" });
-
-      console.log("Active bookings count:", totalActiveBookings);
-console.log("Checked-in count:", totalCheckedIn);
-console.log("Checked-out count:", totalCheckedOut);
- 
-
-    // 2️⃣ Overview counts (same filter)
+    // ---------------------------
+    // 4️⃣ Compute overview counts
+    // ---------------------------
     const [totalRooms, activeBookings, checkedIn, checkedOut] = await Promise.all([
-      Booking.countDocuments({
-        ...dateFilter,
-        status: { $in: ["reserved", "checked-in"] },
-      }),
-      Booking.countDocuments({
-        ...dateFilter,
-        status: "checked-in",
-      }),
-      Booking.countDocuments({
-        ...dateFilter,
-        status: "checked-out",
-      }),
+      Booking.countDocuments(), // total rooms/bookings
+      Booking.countDocuments({ 
+  ...checkInFilter, 
+  status: { $in: ["reserved", "checked-in"] } 
+}), // active/reserved
+      Booking.countDocuments({ ...checkInFilter, status: "checked-in" }), // checked-in
+      Booking.countDocuments({ ...checkOutFilter, status: "checked-out" }), // checked-out
     ]);
 
+    console.log("Active bookings count:", activeBookings);
+    console.log("Checked-in count:", checkedIn);   
+    console.log("Checked-out count:", checkedOut);
+
+    // ---------------------------
+    // 5️⃣ Send response
+    // ---------------------------
     res.json({
       bookings,
       overview: {
@@ -289,7 +290,7 @@ console.log("Checked-out count:", totalCheckedOut);
     console.error("❌ Error fetching bookings:", err);
     res.status(500).json({ message: "Failed to fetch bookings" });
   }
-};
+}; 
 
 
 
