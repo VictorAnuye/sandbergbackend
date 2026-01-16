@@ -110,20 +110,22 @@ export const getRooms = async (req, res) => {
 
 export const deleteRoom = async (req, res) => {
   try {
-    console.log("🗑️ DELETE request received for room ID:", req.params.id)
+    const { id } = req.params
+    console.log("🗑️ DELETE request received for room ID:", id)
 
-    const room = await Room.findById(req.params.id)
-    if (!room) {
+    const deletedRoom = await Room.findByIdAndDelete(id)
+
+    if (!deletedRoom) {
       console.log("❌ Room not found")
       return res.status(404).json({ message: "Room not found" })
     }
 
-    await room.remove()
-    console.log("✅ Room deleted successfully:", room)
+    console.log("✅ Room deleted successfully:", deletedRoom)
     return res.status(200).json({ message: "Room deleted successfully" })
   } catch (err) {
     console.error("❌ Error deleting room:", err)
     return res.status(500).json({ message: "Server error" })
   }
 }
+
 
