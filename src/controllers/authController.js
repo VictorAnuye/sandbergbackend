@@ -80,8 +80,9 @@ export const logout = async (req, res) => {
   }
 
   // Invalidate token
-  user.currentToken = null;
   user.isOnline = false
+  user.currentToken = null;
+  
 
   await user.save();
 
