@@ -38,6 +38,7 @@ export const notifyCheckoutDueBookings = async () => {
     console.error("❌ Checkout notification error:", error)
   }
 }
+
 export const getNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find()
