@@ -251,6 +251,15 @@ export const getAllBookings = async (req, res) => {
       .populate("handledBy", "fullName email")
       .sort({ createdAt: -1 });
 
+          const totalActiveBookings = await Booking.countDocuments({ status:"checked-in" });
+    const totalCheckedIn = await Booking.countDocuments({ status: "checked-in" });
+    const totalCheckedOut = await Booking.countDocuments({ status: "checked-out" });
+
+      console.log("Active bookings count:", totalActiveBookings);
+console.log("Checked-in count:", totalCheckedIn);
+console.log("Checked-out count:", totalCheckedOut);
+ 
+
     // 2️⃣ Overview counts (same filter)
     const [totalRooms, activeBookings, checkedIn, checkedOut] = await Promise.all([
       Booking.countDocuments({

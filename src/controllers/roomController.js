@@ -87,6 +87,11 @@ export const getRooms = async (req, res) => {
     "lastUpdatedBy",
     "fullName email role" // only show these fields
   );
+  console.log("🔢 Rooms found by API:", rooms.length);
+    console.log(
+      "🛏️ Room numbers:",
+      rooms.map(r => r.roomNumber)
+    );
 
   // Optional: rename lastUpdatedBy to just the name for clarity
   const formattedRooms = rooms.map(room => ({
