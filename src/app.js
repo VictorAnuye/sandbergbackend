@@ -4,6 +4,7 @@ import roomRoutes from "./routes/roomRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import { startCheckoutNotifierJob } from "./jobs/checkoutNotifier.js"
 const app = express(); 
 
 app.use(cors());
@@ -20,5 +21,7 @@ app.use(cors({
 app.get("/", (req, res) => {
   res.json({ message: "Sandberg HMS API running" });
 });
+
+startCheckoutNotifierJob()
 
 export default app;

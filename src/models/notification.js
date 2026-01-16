@@ -4,9 +4,10 @@ const notificationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["ONLINE_BOOKING"],
+      enum: ["ONLINE_BOOKING","CHECK_DUE"],
       required: true,
     },
+    
 
     booking: {
       type: mongoose.Schema.Types.ObjectId,

@@ -19,6 +19,12 @@ const bookingSchema = new mongoose.Schema(
       default: null,
     },
 
+    checkoutNotified: {
+      type: Boolean,
+      default: false,
+    },
+
+
     source: {
       type: String,
       enum: ["online", "reception"],
