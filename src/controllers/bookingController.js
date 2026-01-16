@@ -213,13 +213,13 @@ export const checkOut = async (req, res) => {
 };
 
 
-
 export const getAllBookings = async (req, res) => {
   try {
-    const { range } = req.query; // today, this-week, this-month, this-year
-    const now = dayjs().tz("Africa/Lagos"); // adjust timezone if needed
+    const { range } = req.query; // today | this-week | this-month | this-year
+    const now = dayjs().tz("Africa/Lagos");
 
-    let start, end;
+    let start = null;
+    let end = null;
 
     switch (range) {
       case "today":
@@ -238,37 +238,45 @@ export const getAllBookings = async (req, res) => {
         start = now.startOf("year").toDate();
         end = now.endOf("year").toDate();
         break;
-      default:
-        start = null;
-        end = null;
     }
 
-    // Build query
-    const filter: any = {};
-    if (start && end) {
-      filter.checkInDate = { $gte: start, $lte: end };
-    }
+    // Shared date filter
+    const dateFilter = start && end
+      ? { checkInDate: { $gte: start, $lte: end } }
+      : {};
 
-    // Fetch filtered bookings
-    const bookings = await Booking.find(filter)
+    // 1️⃣ Fetch bookings
+    const bookings = await Booking.find(dateFilter)
       .populate("room", "roomNumber roomType")
-      .populate("handledBy", "fullName email");
+      .populate("handledBy", "fullName email")
+      .sort({ createdAt: -1 });
 
-    // Overview counts
-    const totalActiveBookings = await Booking.countDocuments({ status: "reserved" });
-    const totalCheckedIn = await Booking.countDocuments({ status: "checked-in" });
-    const totalCheckedOut = await Booking.countDocuments({ status: "checked-out" });
+    // 2️⃣ Overview counts (same filter)
+    const [activeBookings, checkedIn, checkedOut] = await Promise.all([
+      Booking.countDocuments({
+        ...dateFilter,
+        status: { $in: ["reserved", "checked-in"] },
+      }),
+      Booking.countDocuments({
+        ...dateFilter,
+        status: "checked-in",
+      }),
+      Booking.countDocuments({
+        ...dateFilter,
+        status: "checked-out",
+      }),
+    ]);
 
     res.json({
       bookings,
       overview: {
-        activeBookings: totalActiveBookings,
-        checkedIn: totalCheckedIn,
-        checkedOut: totalCheckedOut,
+        activeBookings,
+        checkedIn,
+        checkedOut,
       },
     });
   } catch (err) {
-    console.error("Error fetching bookings:", err);
+    console.error("❌ Error fetching bookings:", err);
     res.status(500).json({ message: "Failed to fetch bookings" });
   }
 };
