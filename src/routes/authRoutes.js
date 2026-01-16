@@ -18,7 +18,7 @@ router.post("/forgot-password", forgotPassword);
 router.post("/validate-reset-code", validateResetCode);
 router.post("/reset-password", resetPassword);
 router.get("/me", protect, getCurrentUser);
-router.get("/online", protect, getOnlineReceptionists);
+router.get("/online", protect, adminOnly, getOnlineReceptionists);
 // In authRoutes.js
 router.post("/logout", protect, async (req, res) => { 
   req.user.currentToken = null;
