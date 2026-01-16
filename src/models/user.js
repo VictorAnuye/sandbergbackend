@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema(
       trim: true,
       minlength: [3, "Full name must be at least 3 characters"],
     },
+    isOnline: { type: Boolean, default: false },
+     lastLogin: { type: Date },
     email: {
       type: String,
       required: [true, "Email is required"],
