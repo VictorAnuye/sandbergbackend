@@ -106,3 +106,23 @@ export const getRooms = async (req, res) => {
   res.json(formattedRooms);
 };
 
+
+export const deleteRoom = async (req, res) => {
+  try {
+    const { id } = req.params; // We'll pass room ID in the URL
+
+    if (!room) {
+      return res.status(400).json({ message: "Room ID is required" });
+    }
+
+    const room = await Room.findById(id);
+  if (!room) return res.status(404).json({ message: "Room not found" });
+
+    await room.deleteOne(); // Delete the room
+
+    res.status(200).json({ message: "Room deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting room:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

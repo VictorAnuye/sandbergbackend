@@ -4,6 +4,7 @@ import {
   updateRoom,
   getRooms,
   updateRoomStatus,
+  deleteRoom,
 } from "../controllers/roomController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
@@ -14,7 +15,7 @@ const router = express.Router();
 // Admin routes
 router.post("/", protect, adminOnly, createRoom);
 router.put("/:id", protect, adminOnly, updateRoom);
-
+router.delete("/:id", protect, adminOnly, deleteRoom);
 // Receptionist route
 router.patch("/status/:id", protect, updateRoomStatus);
 
