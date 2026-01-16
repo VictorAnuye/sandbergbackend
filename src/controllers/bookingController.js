@@ -1,7 +1,12 @@
 import Booking from "../models/booking.js";
 import Room from "../models/Rooms.js";
 import Notification from "../models/notification.js";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
 export const createBooking = async (req, res) => {
   try {
     // 1️⃣ Authorization
@@ -211,17 +216,63 @@ export const checkOut = async (req, res) => {
 
 export const getAllBookings = async (req, res) => {
   try {
-    // Fetch all bookings from DB
-    const bookings = await Booking.find()
-      .populate("room", "roomNumber roomType")      // Include room details
-      .populate("handledBy", "fullName email");     // Include user who handled the booking
+    const { range } = req.query; // today, this-week, this-month, this-year
+    const now = dayjs().tz("Africa/Lagos"); // adjust timezone if needed
 
-    res.json(bookings);
+    let start, end;
+
+    switch (range) {
+      case "today":
+        start = now.startOf("day").toDate();
+        end = now.endOf("day").toDate();
+        break;
+      case "this-week":
+        start = now.startOf("week").toDate();
+        end = now.endOf("week").toDate();
+        break;
+      case "this-month":
+        start = now.startOf("month").toDate();
+        end = now.endOf("month").toDate();
+        break;
+      case "this-year":
+        start = now.startOf("year").toDate();
+        end = now.endOf("year").toDate();
+        break;
+      default:
+        start = null;
+        end = null;
+    }
+
+    // Build query
+    const filter: any = {};
+    if (start && end) {
+      filter.checkInDate = { $gte: start, $lte: end };
+    }
+
+    // Fetch filtered bookings
+    const bookings = await Booking.find(filter)
+      .populate("room", "roomNumber roomType")
+      .populate("handledBy", "fullName email");
+
+    // Overview counts
+    const totalActiveBookings = await Booking.countDocuments({ status: "reserved" });
+    const totalCheckedIn = await Booking.countDocuments({ status: "checked-in" });
+    const totalCheckedOut = await Booking.countDocuments({ status: "checked-out" });
+
+    res.json({
+      bookings,
+      overview: {
+        activeBookings: totalActiveBookings,
+        checkedIn: totalCheckedIn,
+        checkedOut: totalCheckedOut,
+      },
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching bookings:", err);
     res.status(500).json({ message: "Failed to fetch bookings" });
   }
 };
+
 
 
 export const createOnlineBooking = async (req, res) => {
