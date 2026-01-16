@@ -236,3 +236,17 @@ export const getCurrentUser = async (req, res) => {
     res.status(500).json({ message: "Server error" })
   }
 }
+
+export const getOnlineReceptionists = async (req, res) => {
+  try {
+    const receptionists = await User.find({
+      role: "receptionist",
+      isOnline: true
+    }).select("fullName email lastLogin") // only return relevant fields
+
+    res.json(receptionists)
+  } catch (err) {
+    console.error("❌ Error fetching online receptionists:", err)
+    res.status(500).json({ message: "Failed to fetch online receptionists" })
+  }
+}
