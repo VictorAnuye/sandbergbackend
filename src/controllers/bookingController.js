@@ -65,15 +65,12 @@ export const createBooking = async (req, res) => {
       console.log(`Checking room ${room.roomNumber} for conflicts...`);
 
       const conflict = await Booking.findOne({
-        room: room._id,
+  room: room._id,
+  status: { $in: ["reserved", "checked-in"] }, // 🔥 ONLY ACTIVE
+  checkInDate: { $lt: checkOut },
+  checkOutDate: { $gt: checkIn },
+});
 
-        // ✅ FIX: pending bookings MUST block availability
-        status: { $in: ["pending", "reserved", "checked-in"] },
-
-        // ✅ Proper date overlap check
-        checkInDate: { $lt: checkOut },
-        checkOutDate: { $gt: checkIn },
-      });
 
       if (conflict) {
         console.log(
