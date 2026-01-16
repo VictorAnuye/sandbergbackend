@@ -252,7 +252,7 @@ export const getAllBookings = async (req, res) => {
       .sort({ createdAt: -1 });
 
     // 2️⃣ Overview counts (same filter)
-    const [activeBookings, checkedIn, checkedOut] = await Promise.all([
+    const [totalRooms, activeBookings, checkedIn, checkedOut] = await Promise.all([
       Booking.countDocuments({
         ...dateFilter,
         status: { $in: ["reserved", "checked-in"] },
@@ -270,6 +270,7 @@ export const getAllBookings = async (req, res) => {
     res.json({
       bookings,
       overview: {
+        totalRooms,
         activeBookings,
         checkedIn,
         checkedOut,
