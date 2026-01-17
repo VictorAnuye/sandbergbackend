@@ -20,6 +20,6 @@ router.delete("/:id", protect, adminOnly, deleteRoom);
 router.patch("/status/:id", protect, updateRoomStatus);
 
 // Everyone can view rooms
-router.get("/", protect, getRooms);
+router.get("/", getRooms);
 
 export default router;
