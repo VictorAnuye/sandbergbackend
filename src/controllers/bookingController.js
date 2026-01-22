@@ -506,36 +506,25 @@ export const getPendingBookings = async (req, res) => {
   });
 };
 
+// PATCH /api/bookings/:bookingId/cancel
 export const cancelBooking = async (req, res) => {
-  if (req.user.role !== "receptionist") {
-    return res.status(403).json({ message: "Receptionists only" });
+  try {
+    const { bookingId } = req.params;
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    booking.status = "canceled";
+    await booking.save();
+
+    // Optional: remove related notification
+    await Notification.findOneAndDelete({ booking: booking._id });
+
+    res.json({ message: "Booking canceled successfully", booking });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-
-  const booking = await Booking.findById(req.params.bookingId).populate("room");
-
-  if (!booking) {
-    return res.status(404).json({ message: "Booking not found" });
-  }
-
-  if (booking.status === "checked-out") {
-    return res.status(400).json({ message: "Cannot cancel completed booking" });
-  }
-
-  booking.status = "canceled";
-  booking.handledBy = req.user._id;
-  await booking.save();
-
-  // Free room only if one was assigned
-  if (booking.room) {
-    booking.room.status = "available";
-    await booking.room.save();
-  }
-
-  res.json({
-    message: "Booking canceled successfully",
-    booking,
-  });
 };
+
 
 // Receptionist checks in a guest
 export const checkInBooking = async (req, res) => {
