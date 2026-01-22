@@ -15,7 +15,6 @@ import {
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-
 router.post("/", protect, createBooking);
 router.patch("/:bookingId/check-in", protect, checkIn);
 router.patch("/:bookingId/check-out", protect, checkOut);

@@ -300,7 +300,7 @@ export const createOnlineBooking = async (req, res) => {
       numberOfGuests,
       checkInDate,
       checkOutDate,
-      selectedRoomId, // internal, not from user
+      selectedRoomId, // internal (optional)
     } = req.body;
 
     // 1️⃣ Validate required fields
@@ -324,7 +324,7 @@ export const createOnlineBooking = async (req, res) => {
 
     let roomNumber = null;
 
-    // 3️⃣ If a room is pre-selected, validate availability
+    // 3️⃣ If a room was selected, validate intent ONLY
     if (selectedRoomId) {
       const room = await Room.findById(selectedRoomId);
 
@@ -332,17 +332,16 @@ export const createOnlineBooking = async (req, res) => {
         return res.status(400).json({ error: "Selected room not found" });
       }
 
-      // ❌ Block maintenance rooms
       if (room.status === "maintenance") {
         return res
           .status(409)
           .json({ error: "Selected room is under maintenance" });
       }
 
-      // ❌ Prevent double booking (same logic as reception)
+      // Prevent obvious conflicts (soft check)
       const conflict = await Booking.findOne({
-        room: room._id,
-        status: { $in: ["pending", "reserved", "checked-in"] },
+        roomNumber: room.roomNumber,
+        status: { $in: ["pending", "confirmed", "checked-in"] },
         checkInDate: { $lt: checkOut },
         checkOutDate: { $gt: checkIn },
       });
@@ -356,7 +355,7 @@ export const createOnlineBooking = async (req, res) => {
       roomNumber = room.roomNumber;
     }
 
-    // 4️⃣ Create booking
+    // 4️⃣ Create booking (NO room assignment)
     const booking = await Booking.create({
       guestFullName,
       guestEmail,
@@ -366,8 +365,8 @@ export const createOnlineBooking = async (req, res) => {
       checkOutDate: checkOut,
       source: "online",
       status: "pending",
-      room: selectedRoomId || null,
-      roomNumber,
+      room: null,        // ❌ do NOT assign here
+      roomNumber,        // ✅ intent only
     });
 
     // 5️⃣ Notify admin/reception
@@ -382,9 +381,11 @@ export const createOnlineBooking = async (req, res) => {
       booking,
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error("ONLINE BOOKING ERROR:", error);
+    res.status(500).json({ error: "Failed to create booking" });
   }
 };
+
 
 
 // Receptionist confirms a booking
