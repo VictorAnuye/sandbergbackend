@@ -300,10 +300,9 @@ export const createOnlineBooking = async (req, res) => {
       numberOfGuests,
       checkInDate,
       checkOutDate,
-      selectedRoomId, // internal (optional)
+      roomNumber, // ✅ FROM FRONTEND
     } = req.body;
 
-    // 1️⃣ Validate required fields
     if (
       !guestFullName ||
       !guestPhone ||
@@ -314,7 +313,6 @@ export const createOnlineBooking = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // 2️⃣ Validate dates
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
@@ -322,11 +320,11 @@ export const createOnlineBooking = async (req, res) => {
       return res.status(400).json({ error: "Invalid booking dates" });
     }
 
-    let roomNumber = null;
+    let resolvedRoomNumber = null;
 
-    // 3️⃣ If a room was selected, validate intent ONLY
-    if (selectedRoomId) {
-      const room = await Room.findById(selectedRoomId);
+    // ✅ Resolve room by roomNumber (SAFE)
+    if (roomNumber) {
+      const room = await Room.findOne({ roomNumber });
 
       if (!room) {
         return res.status(400).json({ error: "Selected room not found" });
@@ -338,9 +336,8 @@ export const createOnlineBooking = async (req, res) => {
           .json({ error: "Selected room is under maintenance" });
       }
 
-      // Prevent obvious conflicts (soft check)
       const conflict = await Booking.findOne({
-        roomNumber: room.roomNumber,
+        roomNumber,
         status: { $in: ["pending", "confirmed", "checked-in"] },
         checkInDate: { $lt: checkOut },
         checkOutDate: { $gt: checkIn },
@@ -352,10 +349,9 @@ export const createOnlineBooking = async (req, res) => {
         });
       }
 
-      roomNumber = room.roomNumber;
+      resolvedRoomNumber = room.roomNumber;
     }
 
-    // 4️⃣ Create booking (NO room assignment)
     const booking = await Booking.create({
       guestFullName,
       guestEmail,
@@ -365,11 +361,10 @@ export const createOnlineBooking = async (req, res) => {
       checkOutDate: checkOut,
       source: "online",
       status: "pending",
-      room: null,        // ❌ do NOT assign here
-      roomNumber,        // ✅ intent only
+      room: null,                  // ✅ NOT assigned yet
+      roomNumber: resolvedRoomNumber,
     });
 
-    // 5️⃣ Notify admin/reception
     await Notification.create({
       type: "ONLINE_BOOKING",
       booking: booking._id,
@@ -385,6 +380,7 @@ export const createOnlineBooking = async (req, res) => {
     res.status(500).json({ error: "Failed to create booking" });
   }
 };
+
 
 
 
