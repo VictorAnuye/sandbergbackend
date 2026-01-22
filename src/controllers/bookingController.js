@@ -387,75 +387,109 @@ export const createOnlineBooking = async (req, res) => {
 // Receptionist confirms a booking
 export const confirmBooking = async (req, res) => {
   try {
-    const { bookingId } = req.params;
-    console.log("Booking ID received:", bookingId);
+    const { bookingId } = req.params
 
-    const booking = await Booking.findById(bookingId);
-    if (!booking) return res.status(404).json({ error: "Booking not found" });
+    const booking = await Booking.findById(bookingId)
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" })
+    }
 
-    // Check if already confirmed
+    /* -------------------- */
+    /* Already processed?   */
+    /* -------------------- */
     if (booking.status !== "pending") {
-      return res
-        .status(400)
-        .json({ error: "Booking is already confirmed or processed" });
+      return res.status(400).json({
+        message: "Booking has already been processed",
+      })
     }
- 
-    let room;
 
-    if (booking.room) {
-      // Room already assigned in booking → use it
-      room = await Room.findById(booking.room);
-      if (!room) return res.status(404).json({ error: "Assigned room not found" });
+    let room
+
+    /* -------------------- */
+    /* Use pre-selected room */
+    /* -------------------- */
+    if (booking.roomNumber) {
+      room = await Room.findOne({ roomNumber: booking.roomNumber })
+
+      if (!room) {
+        return res.status(404).json({
+          message: "Assigned room not found",
+        })
+      }
     } else {
-      // Auto-assign first available room if none assigned
-      room = await Room.findOne({ status: "available" });
-      if (!room) return res.status(400).json({ error: "No available rooms" });
+      /* -------------------- */
+      /* Auto-assign available room */
+      /* -------------------- */
+      const rooms = await Room.find({
+        status: { $ne: "maintenance" },
+      })
 
-      booking.room = room._id;
-      booking.roomNumber = room.roomNumber;
+      for (const r of rooms) {
+        const conflict = await Booking.findOne({
+          _id: { $ne: booking._id },
+          roomNumber: r.roomNumber,
+          status: { $in: ["pending", "confirmed", "checked-in"] },
+          checkInDate: { $lt: booking.checkOutDate },
+          checkOutDate: { $gt: booking.checkInDate },
+        })
+
+        if (!conflict) {
+          room = r
+          break
+        }
+      }
+
+      if (!room) {
+        return res.status(409).json({
+          message: "No rooms available for the selected dates",
+        })
+      }
+
+      booking.roomNumber = room.roomNumber
     }
 
-    // Prevent overlapping bookings for this room
+    /* -------------------- */
+    /* Final conflict check */
+    /* -------------------- */
     const overlapping = await Booking.findOne({
-      room: room._id,
-      status: { $in: ["reserved", "checked-in"] },
-      $or: [
-        {
-          checkInDate: { $lt: booking.checkOutDate, $gte: booking.checkInDate },
-        },
-        {
-          checkOutDate: { $gt: booking.checkInDate, $lte: booking.checkOutDate },
-        },
-        {
-          checkInDate: { $lte: booking.checkInDate },
-          checkOutDate: { $gte: booking.checkOutDate },
-        },
-      ],
-    });
+      _id: { $ne: booking._id },
+      roomNumber: booking.roomNumber,
+      status: { $in: ["pending", "confirmed", "checked-in"] },
+      checkInDate: { $lt: booking.checkOutDate },
+      checkOutDate: { $gt: booking.checkInDate },
+    })
 
     if (overlapping) {
-      return res
-        .status(400)
-        .json({ error: "Room is already booked for these dates" });
+      return res.status(409).json({
+        message: "Room is already booked for these dates",
+      })
     }
 
-    // Update booking
-    booking.status = "reserved";
-    booking.handledBy = req.user._id; // receptionist id
-    await booking.save();
+    /* -------------------- */
+    /* Confirm booking      */
+    /* -------------------- */
+    booking.status = "reserved"
+    booking.room = room._id
+    booking.handledBy = req.user._id
+    await booking.save()
 
-    // Update room status
-    room.status = "reserved";
-    room.lastUpdatedBy = req.user._id;
-    await room.save();
+    /* -------------------- */
+    /* Cleanup notification */
+    /* -------------------- */
+    await Notification.findOneAndDelete({ booking: booking._id })
 
-     await Notification.findOneAndDelete({ booking: booking._id });
-
-    res.json({ message: "Booking confirmed successfully", booking });
+    return res.json({
+      message: "Booking confirmed successfully",
+      booking,
+    })
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("CONFIRM BOOKING ERROR:", error)
+    return res.status(500).json({
+      message: "Failed to confirm booking",
+    })
   }
-};
+}
+
 
 
 export const getPendingBookings = async (req, res) => {
