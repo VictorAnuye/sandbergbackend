@@ -510,13 +510,12 @@ export const getPendingBookings = async (req, res) => {
 export const cancelBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId).exec();
     if (!booking) return res.status(404).json({ message: "Booking not found" });
 
     booking.status = "canceled";
     await booking.save();
 
-    // Optional: remove related notification
     await Notification.findOneAndDelete({ booking: booking._id });
 
     res.json({ message: "Booking canceled successfully", booking });
@@ -524,6 +523,7 @@ export const cancelBooking = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
 
 
 // Receptionist checks in a guest
