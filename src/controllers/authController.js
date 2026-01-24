@@ -137,28 +137,44 @@ export const createReceptionist = async (req, res) => {
 // src/controllers/authController.js
 
 export const forgotPassword = async (req, res) => {
-  const { email } = req.body;
-  const user = await User.findOne({ email });
+  try {
+    const { email } = req.body;
 
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save code + expiry
+    user.resetCode = code;
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    console.log("Reset code stored in DB:", code);
+
+    // 🔥 Send email (MUST succeed)
+    await sendEmail(
+      user.email,
+      "Your password reset code",
+      `Your reset code is: ${code}`
+    );
+
+    return res.status(200).json({
+      message: "Reset code sent to email",
+    });
+
+  } catch (error) {
+    console.error("Forgot password error:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to send reset email. Please try again later.",
+    });
   }
-
-  // Generate 6-digit code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Save code and expiry in the user document
-  user.resetCode = code;
-  user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 min expiry
-  await user.save();
-
-  console.log("Reset code stored in DB:", user.resetCode);
-
-  // Send email
-  await sendEmail(user.email, "Your password reset code", `Your reset code is: ${code}`);
-
-  res.json({ message: "Reset code sent to email" });
 };
+
 
 
 // Step 2: Validate Code
