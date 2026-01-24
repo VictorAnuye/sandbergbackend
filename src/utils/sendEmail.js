@@ -1,29 +1,32 @@
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import nodemailer from "nodemailer";
 
 export const sendEmail = async (to, subject, text) => {
   try {
-    console.log(`Preparing to send email to: ${to}`);
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false, // MUST be false
+      auth: {
+        user: process.env.EMAIL_USER, // your gmail
+        pass: process.env.EMAIL_PASS, // NOT normal password
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
 
-    const { data, error } = await resend.emails.send({
-      from: `Sandberg Guest House <${process.env.EMAIL_FROM}>`,
+    await transporter.verify();
+
+    await transporter.sendMail({
+      from: `"Sandberg Guest House" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text,
     });
 
-    if (error) {
-      console.error("Resend error:", error);
-      throw new Error("Email delivery failed");
-    }
-
-    console.log("Email sent successfully");
-    console.log("Resend ID:", data.id);
-
-    return true;
+    console.log("Email sent via Gmail SMTP");
   } catch (err) {
-    console.error("Error sending email:", err.message);
-    throw err; // 🔥 IMPORTANT — let controller know it failed
+    console.error("SMTP error:", err);
+    throw new Error("Email delivery failed");
   }
 };
