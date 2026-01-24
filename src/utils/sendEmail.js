@@ -1,32 +1,25 @@
 import nodemailer from "nodemailer";
 
-export const sendEmail = async (to, subject, text) => {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false, // MUST be false
-      auth: {
-        user: process.env.EMAIL_USER, // your gmail
-        pass: process.env.EMAIL_PASS, // NOT normal password
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
+export const sendEmail = async (to, subject, html) => {
+  console.log("📧 SMTP Config:", {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS ? "Loaded ✅" : "❌ Missing",
+  });
 
-    await transporter.verify();
+  const transporter = nodemailer.createTransport({
+    service: "gmail", // 👈 THIS is the key
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS, // App password
+    },
+  });
 
-    await transporter.sendMail({
-      from: `"Sandberg Guest House" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      text,
-    });
+  await transporter.sendMail({
+    from: `"Sandberg Guest House" <${process.env.EMAIL_USER}>`,
+    to,
+    subject,
+    html,
+  });
 
-    console.log("Email sent via Gmail SMTP");
-  } catch (err) {
-    console.error("SMTP error:", err);
-    throw new Error("Email delivery failed");
-  }
+  console.log("✅ Email sent via Gmail");
 };
