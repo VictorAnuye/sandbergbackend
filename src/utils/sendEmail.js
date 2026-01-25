@@ -2,33 +2,26 @@ import nodemailer from "nodemailer";
 
 export const sendEmail = async (to, subject, text) => {
   try {
-    console.log("📧 SMTP Config:", {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS ? "Loaded ✅" : "❌ Missing",
-    });
-
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true, // IMPORTANT
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: false, // MUST be false for port 587
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // MUST be App Password
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
 
-    const info = await transporter.sendMail({
-      from: `"Sandberg Guest House" <${process.env.EMAIL_USER}>`,
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
       to,
       subject,
       text,
     });
 
-    console.log("✅ Email sent:", info.messageId);
-    return true;
-
+    console.log("✅ Email sent successfully via Brevo SMTP");
   } catch (error) {
-    console.error("❌ SMTP error:", error);
+    console.error("❌ Brevo SMTP error:", error);
     throw new Error("Email delivery failed");
   }
 };
