@@ -156,11 +156,22 @@ export const forgotPassword = async (req, res) => {
     console.log("Reset code stored in DB:", code);
 
     // 🔥 Send email (MUST succeed)
-    await sendEmail(
-      user.email,
-      "Your password reset code",
-      `Your reset code is: ${code}`
-    );
+    const emailSent = await sendEmail({
+  to: user.email,
+  subject: "Password Reset Code",
+  html: `
+    <h2>Password Reset</h2>
+    <p>Your reset code is:</p>
+    <h1>${code}</h1>
+    <p>This code expires in 10 minutes.</p>
+  `,
+});
+
+if (!emailSent) {
+  return res.status(500).json({
+    message: "Email delivery failed",
+  });
+}
 
     return res.status(200).json({
       message: "Reset code sent to email",
