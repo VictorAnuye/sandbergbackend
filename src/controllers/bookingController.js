@@ -7,6 +7,7 @@ import timezone from "dayjs/plugin/timezone.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+
 export const createBooking = async (req, res) => {
   try {
     // 1️⃣ Authorization
@@ -24,6 +25,7 @@ export const createBooking = async (req, res) => {
       numberOfGuests,
       checkInDate,
       checkOutDate,
+      roomNumber, // ✅ IMPORTANT: selected room from frontend
     } = req.body;
 
     // 3️⃣ Validate required fields
@@ -32,66 +34,79 @@ export const createBooking = async (req, res) => {
       !guestPhone ||
       !numberOfGuests ||
       !checkInDate ||
-      !checkOutDate
+      !checkOutDate ||
+      !roomNumber
     ) {
-      return res.status(400).json({ message: "Missing required fields" });
+      return res.status(400).json({
+        message: "Missing required fields",
+      });
     }
 
     // 4️⃣ Validate dates
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
-    if (checkOut <= checkIn) {
-      return res.status(400).json({ message: "Invalid booking dates" });
+    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+      return res.status(400).json({
+        message: "Invalid booking dates",
+      });
     }
 
-    console.log("🔍 Searching for available rooms...");
+    if (checkOut <= checkIn) {
+      return res.status(400).json({
+        message: "Invalid booking dates",
+      });
+    }
+
+    console.log("🔍 Walk-in booking request");
+    console.log("Requested room:", roomNumber);
     console.log("Requested dates:", checkIn, "→", checkOut);
 
-    // 5️⃣ Fetch all rooms (DO NOT filter by room.status)
-    const rooms = await Room.find({});
-    console.log(`Found ${rooms.length} rooms in DB`);
+    // 5️⃣ Find EXACTLY the room selected by the receptionist
+    const selectedRoom = await Room.findOne({
+      roomNumber: roomNumber,
+    });
 
-    let selectedRoom = null;
-
-    // 6️⃣ Find a room without date conflicts
-    for (const room of rooms) {
-      // ❌ Skip rooms under maintenance
-      if (room.status === "maintenance") {
-        console.log(`⚠️ Room ${room.roomNumber} under maintenance`);
-        continue;
-      }
-
-      console.log(`Checking room ${room.roomNumber} for conflicts...`);
-
-      const conflict = await Booking.findOne({
-  room: room._id,
-  status: { $in: ["reserved", "checked-in"] }, // 🔥 ONLY ACTIVE
-  checkInDate: { $lt: checkOut },
-  checkOutDate: { $gt: checkIn },
-});
-
-
-      if (conflict) {
-        console.log(
-          `❌ Conflict with booking ${conflict._id} (${conflict.checkInDate} → ${conflict.checkOutDate})`
-        );
-      } else {
-        console.log(`✅ Room ${room.roomNumber} is available for these dates`);
-        selectedRoom = room;
-        break;
-      }
-    }
-
-    // 7️⃣ No room available
     if (!selectedRoom) {
-      console.log("🚫 No available rooms for selected dates");
-      return res
-        .status(409)
-        .json({ message: "No available rooms for selected dates" });
+      console.log(`❌ Room ${roomNumber} not found`);
+
+      return res.status(404).json({
+        message: `Room ${roomNumber} not found`,
+      });
     }
 
-    // 8️⃣ Create booking (FUTURE RESERVATION)
+    console.log(
+      `🏨 Selected room found: ${selectedRoom.roomNumber} (${selectedRoom._id})`
+    );
+
+    // 6️⃣ Do not allow rooms under maintenance
+    if (selectedRoom.status === "maintenance") {
+      console.log(`⚠️ Room ${selectedRoom.roomNumber} is under maintenance`);
+
+      return res.status(409).json({
+        message: `Room ${selectedRoom.roomNumber} is under maintenance`,
+      });
+    }
+
+    // 7️⃣ Check for booking conflicts ONLY on the selected room
+    const conflict = await Booking.findOne({
+      room: selectedRoom._id,
+      status: { $in: ["reserved", "checked-in"] },
+      checkInDate: { $lt: checkOut },
+      checkOutDate: { $gt: checkIn },
+    });
+
+    if (conflict) {
+      console.log(
+        `❌ Room ${selectedRoom.roomNumber} already has a conflicting booking ${conflict._id}`
+      );
+
+      return res.status(409).json({
+        message: `Room ${selectedRoom.roomNumber} is not available for the selected dates`,
+      });
+    }
+
+    // 8️⃣ Create booking for the EXACT selected room
     const booking = await Booking.create({
       room: selectedRoom._id,
       roomNumber: selectedRoom.roomNumber,
@@ -107,22 +122,22 @@ export const createBooking = async (req, res) => {
     });
 
     console.log(
-      `✅ Booking created: Room ${selectedRoom.roomNumber} reserved from ${checkIn} to ${checkOut}`
+      `✅ Booking created successfully: Room ${selectedRoom.roomNumber} reserved from ${checkIn} to ${checkOut}`
     );
 
-    // 9️⃣ IMPORTANT: DO NOT TOUCH room.status here
-
-    res.status(201).json({
+    // 9️⃣ Do not change room.status here
+    return res.status(201).json({
       message: "Booking created successfully",
       booking,
     });
   } catch (error) {
-    console.error("🔥 Error creating booking:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("🔥 Error creating walk-in booking:", error);
+
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
-
-
 
 
 
