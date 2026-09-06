@@ -227,7 +227,8 @@ export const checkOut = async (req, res) => {
 
 export const getAllBookings = async (req, res) => {
   try {
-    const { range } = req.query; // today | this-week | this-month | this-year
+    const { range, date } = req.query;
+
     const now = dayjs().tz("Africa/Lagos");
 
     let start = null;
@@ -236,60 +237,121 @@ export const getAllBookings = async (req, res) => {
     // ---------------------------
     // 1️⃣ Determine date range
     // ---------------------------
-    switch (range) {
-      case "today":
-        start = now.startOf("day").toDate();
-        end = now.endOf("day").toDate();
-        break;
-      case "this-week":
-        start = now.startOf("week").toDate();
-        end = now.endOf("week").toDate();
-        break;
-      case "this-month":
-        start = now.startOf("month").toDate();
-        end = now.endOf("month").toDate();
-        break;
-      case "this-year":
-        start = now.startOf("year").toDate();
-        end = now.endOf("year").toDate();
-        break;
+
+    if (date) {
+      // 📅 SPECIFIC CALENDAR DATE
+      //
+      // Example:
+      // /api/bookings?date=2026-09-18
+      //
+      // We use Lagos time so the selected calendar
+      // date matches the hotel's local date.
+
+      const selectedDate = dayjs.tz(date, "YYYY-MM-DD", "Africa/Lagos");
+
+      if (!selectedDate.isValid()) {
+        return res.status(400).json({
+          message: "Invalid date. Expected format YYYY-MM-DD",
+        });
+      }
+
+      start = selectedDate.startOf("day").toDate();
+      end = selectedDate.endOf("day").toDate();
+    } else {
+      // Existing range filters remain unchanged
+
+      switch (range) {
+        case "today":
+          start = now.startOf("day").toDate();
+          end = now.endOf("day").toDate();
+          break;
+
+        case "this-week":
+          start = now.startOf("week").toDate();
+          end = now.endOf("week").toDate();
+          break;
+
+        case "this-month":
+          start = now.startOf("month").toDate();
+          end = now.endOf("month").toDate();
+          break;
+
+        case "this-year":
+          start = now.startOf("year").toDate();
+          end = now.endOf("year").toDate();
+          break;
+      }
     }
 
     // ---------------------------
-    // 2️⃣ Build date filters
+    // 2️⃣ Build booking date filter
     // ---------------------------
-    const checkInFilter = start && end ? { checkInDate: { $gte: start, $lte: end } } : {};
-    const checkOutFilter = start && end ? { checkOutDate: { $gte: start, $lte: end } } : {};
+
+    let bookingDateFilter = {};
+
+   if (start && end) {
+  bookingDateFilter = {
+    checkInDate: { $gte: start, $lte: end },
+  };
+}
 
     // ---------------------------
-    // 3️⃣ Fetch bookings list
+    // 3️⃣ Fetch bookings
     // ---------------------------
-    const bookings = await Booking.find(checkInFilter)
+
+    const bookings = await Booking.find(bookingDateFilter)
       .populate("room", "roomNumber roomType")
       .populate("handledBy", "fullName email")
       .sort({ createdAt: -1 });
 
     // ---------------------------
-    // 4️⃣ Compute overview counts
+    // 4️⃣ Overview counts
     // ---------------------------
-    const [totalRooms, activeBookings, checkedIn, checkedOut] = await Promise.all([
-      Booking.countDocuments(), // total rooms/bookings
-      Booking.countDocuments({ 
-  ...checkInFilter, 
-  status: { $in: ["reserved", "checked-in"] } 
-}), // active/reserved
-      Booking.countDocuments({ ...checkInFilter, status: "checked-in" }), // checked-in
-      Booking.countDocuments({ ...checkOutFilter, status: "checked-out" }), // checked-out
+
+    const [
+      totalRooms,
+      activeBookings,
+      checkedIn,
+      checkedOut,
+    ] = await Promise.all([
+      // Keep your existing behavior
+      Booking.countDocuments(),
+
+      // Active bookings during selected period
+      Booking.countDocuments({
+        ...bookingDateFilter,
+        status: { $in: ["reserved", "checked-in"] },
+      }),
+
+      // Checked-in bookings during selected period
+      Booking.countDocuments({
+        ...bookingDateFilter,
+        status: "checked-in",
+      }),
+
+      // Checked-out bookings during selected period
+      Booking.countDocuments({
+        ...bookingDateFilter,
+        status: "checked-out",
+      }),
     ]);
 
-    console.log("Active bookings count:", activeBookings);
-    console.log("Checked-in count:", checkedIn);   
-    console.log("Checked-out count:", checkedOut);
+    console.log("📅 Booking filter:", {
+      range,
+      date,
+      start,
+      end,
+    });
+
+    console.log("📊 Active bookings count:", activeBookings);
+    console.log("📊 Checked-in count:", checkedIn);
+    console.log("📊 Checked-out count:", checkedOut);
 
     // ---------------------------
     // 5️⃣ Send response
     // ---------------------------
-    res.json({
+
+    return res.json({
       bookings,
       overview: {
         totalRooms,
@@ -300,9 +362,12 @@ export const getAllBookings = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error fetching bookings:", err);
-    res.status(500).json({ message: "Failed to fetch bookings" });
+
+    return res.status(500).json({
+      message: "Failed to fetch bookings",
+    });
   }
-}; 
+};
 
 
 
