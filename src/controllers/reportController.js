@@ -33,11 +33,13 @@ const getDateRange = (startDate, endDate) => {
 // GET RECEPTIONISTS
 // =====================================
 
-export const getReportReceptionists = async (req, res) => {
+export const getReportReceptionists = async (
+  req,
+  res
+) => {
   try {
     const receptionists = await User.find({
       role: "receptionist",
-      isActive: true,
     })
       .select("_id fullName")
       .sort({ fullName: 1 })
@@ -55,7 +57,8 @@ export const getReportReceptionists = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch receptionists",
+      message:
+        "Failed to fetch receptionists",
     });
   }
 };
