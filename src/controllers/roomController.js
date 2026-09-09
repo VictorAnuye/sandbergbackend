@@ -95,18 +95,19 @@ export const getRooms = async (req, res) => {
 
   // Optional: rename lastUpdatedBy to just the name for clarity
   const formattedRooms = rooms.map(room => ({
-    _id: room._id,
-    roomNumber: room.roomNumber,
-    roomType: room.roomType,
-    pricePerNight: room.pricePerNight,
-    status: room.status,
-    description: room.description,
-    lastUpdatedBy: room.lastUpdatedBy ? room.lastUpdatedBy.fullName : null,
-    lastUpdatedAt: room.lastUpdatedAt,
-    createdAt: room.createdAt,
-    updatedAt: room.updatedAt,
-    
-  }));
+  _id: room._id,
+  roomNumber: room.roomNumber,
+  roomType: room.roomType,
+  pricePerNight: room.pricePerNight,
+  weekday_price: room.weekday_price,
+  weekend_price: room.weekend_price,
+  status: room.status,
+  description: room.description,
+  lastUpdatedBy: room.lastUpdatedBy ? room.lastUpdatedBy.fullName : null,
+  lastUpdatedAt: room.lastUpdatedAt,
+  createdAt: room.createdAt,
+  updatedAt: room.updatedAt,
+}));
 
   res.json(formattedRooms);
 };
