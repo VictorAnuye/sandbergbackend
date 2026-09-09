@@ -14,10 +14,22 @@ const roomSchema = new mongoose.Schema(
       default: "Single",
     },
     pricePerNight: {
-      type: Number,
-      required: [true, "Price per night is required"],
-      min: [0, "Price cannot be negative"],
-    },
+  type: Number,
+  required: [true, "Price per night is required"],
+  min: [0, "Price cannot be negative"],
+},
+
+weekday_price: {
+  type: Number,
+  min: [0, "Weekday price cannot be negative"],
+  default: null,
+},
+
+weekend_price: {
+  type: Number,
+  min: [0, "Weekend price cannot be negative"],
+  default: null,
+},
     status: {
       type: String,
       enum: ["available", "occupied", "reserved", "maintenance"],

@@ -26,4 +26,10 @@ router.post("/online", createOnlineBooking);
 router.post("/:bookingId/check-in", protect, authorize("receptionist"), checkInBooking);
 router.post("/:bookingId/check-out", protect, authorize("receptionist"), checkOutBooking);
 router.get("/overview", protect, getAdminOverview);
+router.get(
+  "/reports",
+  protect,
+  authorize("receptionist", "admin"),
+  generateReport
+);
 export default router;

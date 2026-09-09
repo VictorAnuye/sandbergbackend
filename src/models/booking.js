@@ -65,6 +65,49 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
 
+    rate_type: {
+  type: String,
+  enum: ["WEEKDAY", "WEEKEND"],
+  default: null,
+},
+
+applied_rate: {
+  type: Number,
+  min: 0,
+  default: null,
+},
+
+total_charge: {
+  type: Number,
+  min: 0,
+  default: null,
+},
+
+// =====================================
+// PER-NIGHT PRICING SNAPSHOT
+// =====================================
+
+pricingBreakdown: [
+  {
+    date: {
+      type: Date,
+      required: true,
+    },
+
+    rate_type: {
+      type: String,
+      enum: ["WEEKDAY", "WEEKEND"],
+      required: true,
+    },
+
+    applied_rate: {
+      type: Number,
+      min: 0,
+      required: true,
+    },
+  },
+],
+
     status: {
       type: String,
       enum: [

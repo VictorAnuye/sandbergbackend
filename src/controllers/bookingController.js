@@ -1,12 +1,128 @@
 import Booking from "../models/booking.js";
 import Room from "../models/Rooms.js";
 import Notification from "../models/notification.js";
+import BookingTransaction from "../models/bookingTransaction.js";
+
+import {
+  getRateTypeForDate,
+  calculateBookingTotal,
+  calculateOnlineBookingPrice,
+} from "../utils/pricing.js";
+
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+
+// ============================================================
+// PRICING HELPERS
+// ============================================================
+
+const VALID_RATE_TYPES = ["WEEKDAY", "WEEKEND"];
+
+
+/**
+ * Create/update the pricing snapshot on a booking.
+ *
+ * This is intentionally stored on Booking so that future
+ * changes to Room pricing do not alter an existing booking.
+ */
+const applyBookingPricing = async ({
+  booking,
+  room,
+}) => {
+  if (!room) {
+    throw new Error(
+      "A room is required to calculate booking pricing."
+    );
+  }
+
+  const pricing = calculateBookingTotal({
+    room,
+    checkIn: booking.checkInDate,
+    checkOut: booking.checkOutDate,
+  });
+
+  booking.rate_type =
+    pricing.rateType;
+
+  booking.applied_rate =
+    pricing.rate;
+
+  booking.total_charge =
+    pricing.total;
+
+  booking.pricingBreakdown =
+    pricing.breakdown.map((item) => ({
+      date: item.date,
+      rate_type: item.rateType,
+      applied_rate: item.rate,
+    }));
+
+  return pricing;
+};
+
+
+/**
+ * Create the financial transaction when a guest checks in.
+ *
+ * This function is deliberately idempotent:
+ * checking the same booking in twice will NOT create
+ * duplicate financial records.
+ */
+const createCheckInTransaction = async ({
+  booking,
+  room,
+  staffId,
+}) => {
+  const existingTransaction = await BookingTransaction.findOne({
+    booking: booking._id,
+  });
+
+  if (existingTransaction) {
+    // If the transaction already exists, don't create another one.
+    // This protects revenue from accidental duplicate check-in calls.
+    return existingTransaction;
+  }
+
+  const transaction = await BookingTransaction.create({
+    booking: booking._id,
+
+    guestFullName: booking.guestFullName,
+
+    room: room?._id || booking.room || null,
+
+    roomNumber:
+      booking.roomNumber ||
+      room?.roomNumber ||
+      null,
+
+    roomType: room?.roomType || null,
+
+    rate_type: booking.rate_type,
+
+    amount: Number(booking.total_charge || 0),
+
+    pricingBreakdown:
+  booking.pricingBreakdown || [],
+
+    source: booking.source,
+
+    staff:
+      booking.source === "online"
+        ? null
+        : staffId || booking.handledBy || null,
+
+    status: "CHECKED_IN",
+
+    checkInAt: new Date(),
+  });
+
+  return transaction;
+};
+
 
 export const createBooking = async (req, res) => {
   try {
@@ -25,7 +141,8 @@ export const createBooking = async (req, res) => {
       numberOfGuests,
       checkInDate,
       checkOutDate,
-      roomNumber, // ✅ IMPORTANT: selected room from frontend
+      roomNumber,
+      rate_type,
     } = req.body;
 
     // 3️⃣ Validate required fields
@@ -42,7 +159,23 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // 4️⃣ Validate dates
+    // 4️⃣ Validate rate type
+    if (!["WEEKDAY", "WEEKEND"].includes(rate_type)) {
+      return res.status(400).json({
+        message: "Invalid rate_type. Expected WEEKDAY or WEEKEND",
+      });
+    }
+
+    const expectedRateType =
+  getRateTypeForDate(checkIn);
+
+if (rate_type !== expectedRateType) {
+  return res.status(400).json({
+    message: `Invalid rate_type for check-in date. Expected ${expectedRateType}.`,
+  });
+}
+
+    // 5️⃣ Validate dates
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
@@ -61,10 +194,11 @@ export const createBooking = async (req, res) => {
     console.log("🔍 Walk-in booking request");
     console.log("Requested room:", roomNumber);
     console.log("Requested dates:", checkIn, "→", checkOut);
+    console.log("Requested rate type:", rate_type);
 
-    // 5️⃣ Find EXACTLY the room selected by the receptionist
+    // 6️⃣ Find EXACTLY the selected room
     const selectedRoom = await Room.findOne({
-      roomNumber: roomNumber,
+      roomNumber,
     });
 
     if (!selectedRoom) {
@@ -79,16 +213,18 @@ export const createBooking = async (req, res) => {
       `🏨 Selected room found: ${selectedRoom.roomNumber} (${selectedRoom._id})`
     );
 
-    // 6️⃣ Do not allow rooms under maintenance
+    // 7️⃣ Maintenance check
     if (selectedRoom.status === "maintenance") {
-      console.log(`⚠️ Room ${selectedRoom.roomNumber} is under maintenance`);
+      console.log(
+        `⚠️ Room ${selectedRoom.roomNumber} is under maintenance`
+      );
 
       return res.status(409).json({
         message: `Room ${selectedRoom.roomNumber} is under maintenance`,
       });
     }
 
-    // 7️⃣ Check for booking conflicts ONLY on the selected room
+    // 8️⃣ Check booking conflicts
     const conflict = await Booking.findOne({
       room: selectedRoom._id,
       status: { $in: ["reserved", "checked-in"] },
@@ -106,29 +242,67 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // 8️⃣ Create booking for the EXACT selected room
+    // 9️⃣ Calculate selected rate
+  const pricing = calculateBookingTotal({
+  room: selectedRoom,
+  checkIn,
+  checkOut,
+});
+    console.log("💰 Booking pricing:", pricing);
+
+    // 🔟 Create booking
     const booking = await Booking.create({
       room: selectedRoom._id,
       roomNumber: selectedRoom.roomNumber,
+
       guestFullName,
       guestEmail,
       guestPhone,
       numberOfGuests,
+
       checkInDate: checkIn,
       checkOutDate: checkOut,
+
       handledBy: req.user._id,
+
       source: "reception",
       status: "reserved",
+
+      // NEW PRICING SNAPSHOT
+      rate_type: pricing.rateType,
+applied_rate: pricing.rate,
+total_charge: pricing.total,
+
+pricingBreakdown: pricing.breakdown.map(
+  (item) => ({
+    date: item.date,
+    rate_type: item.rateType,
+    applied_rate: item.rate,
+  })
+),
     });
 
     console.log(
-      `✅ Booking created successfully: Room ${selectedRoom.roomNumber} reserved from ${checkIn} to ${checkOut}`
+      `✅ Booking created successfully: Room ${selectedRoom.roomNumber}`
     );
 
-    // 9️⃣ Do not change room.status here
+    console.log(
+      `💰 Rate: ${pricing.rateType} | ` +
+      `Rate/night: ${pricing.rate} | ` +
+      `Nights: ${pricing.nights} | ` +
+      `Total: ${pricing.total}`
+    );
+
+    // 1️⃣1️⃣ Do not change room.status here
     return res.status(201).json({
       message: "Booking created successfully",
       booking,
+      pricing: {
+        rate_type: pricing.rateType,
+        rate_per_night: pricing.rate,
+        nights: pricing.nights,
+        total_charge: pricing.total,
+      },
     });
   } catch (error) {
     console.error("🔥 Error creating walk-in booking:", error);
@@ -140,49 +314,101 @@ export const createBooking = async (req, res) => {
 };
 
 
-
-
 export const checkIn = async (req, res) => {
-  const { bookingId } = req.params;
+  try {
+    const { bookingId } = req.params;
 
-  const booking = await Booking.findById(bookingId).populate("room");
+    const booking = await Booking.findById(bookingId).populate("room");
 
-  if (!booking) {
-    return res.status(404).json({ message: "Booking not found" });
-  }
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
 
-  if (booking.status !== "reserved") {
-    return res
-      .status(400)
-      .json({ message: "Booking not eligible for check-in" });
-  }
+    if (booking.status !== "reserved") {
+      return res.status(400).json({
+        message: "Booking not eligible for check-in",
+      });
+    }
 
-  // 🛑 DATE GUARD — VERY IMPORTANT
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+    // =========================================================
+    // DATE GUARD
+    // =========================================================
 
-  const checkInDate = new Date(booking.checkInDate);
-  checkInDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  if (today < checkInDate) {
-    return res.status(400).json({
-      message: "Cannot check in before the reserved check-in date",
+    const checkInDate = new Date(booking.checkInDate);
+    checkInDate.setHours(0, 0, 0, 0);
+
+    if (today < checkInDate) {
+      return res.status(400).json({
+        message: "Cannot check in before the reserved check-in date",
+      });
+    }
+
+    // =========================================================
+    // Ensure pricing exists
+    // =========================================================
+
+    if (
+  !booking.pricingBreakdown?.length ||
+  booking.total_charge === null ||
+  booking.total_charge === undefined
+) {
+  await applyBookingPricing({
+    booking,
+    room,
+  });
+
+  await booking.save();
+}
+
+    // =========================================================
+    // Create financial transaction
+    // =========================================================
+
+    const transaction = await createCheckInTransaction({
+      booking,
+      room: booking.room,
+      staffId: req.user._id,
+    });
+
+    // =========================================================
+    // Update booking
+    // =========================================================
+
+    booking.status = "checked-in";
+    await booking.save();
+
+    // =========================================================
+    // Update room
+    // =========================================================
+
+    booking.room.status = "occupied";
+    booking.room.lastUpdatedBy = req.user._id;
+    booking.room.lastUpdatedAt = new Date();
+
+    await booking.room.save();
+
+    console.log(
+      `💰 Revenue recorded: ${transaction.amount}`
+    );
+
+    return res.json({
+      message: "Guest checked in successfully",
+      booking,
+      transaction,
+    });
+  } catch (error) {
+    console.error("🔥 Check-in error:", error);
+
+    return res.status(500).json({
+      message: "Server error",
     });
   }
-
-  // ✅ Proceed with check-in
-  booking.status = "checked-in";
-  await booking.save();
-
-  booking.room.status = "occupied";
-  await booking.room.save();
-
-  res.json({
-    message: "Guest checked in successfully",
-    booking,
-  });
 };
-
 
 
 
@@ -190,37 +416,75 @@ export const checkOut = async (req, res) => {
   try {
     const { bookingId } = req.params;
 
-    // 1️⃣ Find booking + room
+    // =========================================================
+    // Find booking + room
+    // =========================================================
+
     const booking = await Booking.findById(bookingId).populate("room");
 
     if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+      return res.status(404).json({
+        message: "Booking not found",
+      });
     }
 
-    // 2️⃣ Must be checked-in
+    // =========================================================
+    // Must be checked-in
+    // =========================================================
+
     if (booking.status !== "checked-in") {
       return res.status(400).json({
         message: "Booking not eligible for check-out",
       });
     }
 
-    // 3️⃣ Update booking
+    // =========================================================
+    // Finalize financial transaction
+    // =========================================================
+
+    const transaction = await BookingTransaction.findOne({
+      booking: booking._id,
+    });
+
+    if (transaction) {
+      transaction.status = "CHECKED_OUT";
+      transaction.checkOutAt = new Date();
+
+      // IMPORTANT:
+      // Do NOT change transaction.amount here.
+      await transaction.save();
+    }
+
+    // =========================================================
+    // Update booking
+    // =========================================================
+
     booking.status = "checked-out";
     await booking.save();
 
-    // 4️⃣ Free the room (important with future reservations)
-    booking.room.status = "available";
-    booking.room.lastUpdatedBy = req.user._id;
-    booking.room.lastUpdatedAt = new Date();
-    await booking.room.save();
+    // =========================================================
+    // Free room
+    // =========================================================
 
-    res.json({
+    if (booking.room) {
+      booking.room.status = "available";
+      booking.room.lastUpdatedBy = req.user._id;
+      booking.room.lastUpdatedAt = new Date();
+
+      await booking.room.save();
+    }
+
+    return res.json({
       message: "Guest checked out successfully",
       booking,
+      transaction,
     });
   } catch (error) {
     console.error("🔥 Check-out error:", error);
-    res.status(500).json({ message: "Server error" });
+
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 };
 
@@ -380,7 +644,7 @@ export const createOnlineBooking = async (req, res) => {
       numberOfGuests,
       checkInDate,
       checkOutDate,
-      roomNumber, // ✅ FROM FRONTEND
+      roomNumber,
     } = req.body;
 
     if (
@@ -390,35 +654,58 @@ export const createOnlineBooking = async (req, res) => {
       !checkInDate ||
       !checkOutDate
     ) {
-      return res.status(400).json({ error: "Missing required fields" });
+      return res.status(400).json({
+        error: "Missing required fields",
+      });
     }
 
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
+    if (
+      isNaN(checkIn.getTime()) ||
+      isNaN(checkOut.getTime())
+    ) {
+      return res.status(400).json({
+        error: "Invalid booking dates",
+      });
+    }
+
     if (checkOut <= checkIn) {
-      return res.status(400).json({ error: "Invalid booking dates" });
+      return res.status(400).json({
+        error: "Invalid booking dates",
+      });
     }
 
     let resolvedRoomNumber = null;
+    let selectedRoom = null;
 
-    // ✅ Resolve room by roomNumber (SAFE)
+    // =========================================================
+    // Resolve selected room if supplied
+    // =========================================================
+
     if (roomNumber) {
-      const room = await Room.findOne({ roomNumber });
+      selectedRoom = await Room.findOne({
+        roomNumber,
+      });
 
-      if (!room) {
-        return res.status(400).json({ error: "Selected room not found" });
+      if (!selectedRoom) {
+        return res.status(400).json({
+          error: "Selected room not found",
+        });
       }
 
-      if (room.status === "maintenance") {
-        return res
-          .status(409)
-          .json({ error: "Selected room is under maintenance" });
+      if (selectedRoom.status === "maintenance") {
+        return res.status(409).json({
+          error: "Selected room is under maintenance",
+        });
       }
 
       const conflict = await Booking.findOne({
         roomNumber,
-        status: { $in: ["pending", "confirmed", "checked-in"] },
+        status: {
+          $in: ["pending", "confirmed", "reserved", "checked-in"],
+        },
         checkInDate: { $lt: checkOut },
         checkOutDate: { $gt: checkIn },
       });
@@ -429,20 +716,50 @@ export const createOnlineBooking = async (req, res) => {
         });
       }
 
-      resolvedRoomNumber = room.roomNumber;
+      resolvedRoomNumber = selectedRoom.roomNumber;
     }
+
+    // =========================================================
+    // Automatic online rate
+    // =========================================================
+
+    let pricing = null;
+
+    if (selectedRoom) {
+      pricing = calculateOnlineBookingPrice({
+        room: selectedRoom,
+        checkIn,
+        checkOut,
+      });
+
+      console.log("🌐 Online booking pricing:", pricing);
+    }
+
+    // =========================================================
+    // Create booking
+    // =========================================================
 
     const booking = await Booking.create({
       guestFullName,
       guestEmail,
       guestPhone,
       numberOfGuests,
+
       checkInDate: checkIn,
       checkOutDate: checkOut,
+
       source: "online",
       status: "pending",
-      room: null,                  // ✅ NOT assigned yet
+
+      room: null,
       roomNumber: resolvedRoomNumber,
+
+      // If a room is already selected, save the pricing now.
+      // If no room has been selected yet, confirmBooking()
+      // will calculate it after room assignment.
+      rate_type: pricing?.rateType || null,
+      applied_rate: pricing?.rate || null,
+      total_charge: pricing?.total || null,
     });
 
     await Notification.create({
@@ -451,16 +768,26 @@ export const createOnlineBooking = async (req, res) => {
       message: `New online booking from ${booking.guestFullName}`,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Booking request received. Awaiting confirmation.",
       booking,
+      pricing: pricing
+        ? {
+            rate_type: pricing.rateType,
+            rate_per_night: pricing.rate,
+            nights: pricing.nights,
+            total_charge: pricing.total,
+          }
+        : null,
     });
   } catch (error) {
     console.error("ONLINE BOOKING ERROR:", error);
-    res.status(500).json({ error: "Failed to create booking" });
+
+    return res.status(500).json({
+      error: "Failed to create booking",
+    });
   }
 };
-
 
 
 
@@ -548,10 +875,27 @@ export const confirmBooking = async (req, res) => {
     /* -------------------- */
     /* Confirm booking      */
     /* -------------------- */
-    booking.status = "reserved"
-    booking.room = room._id
-    booking.handledBy = req.user._id
-    await booking.save()
+    // =========================================================
+// Finalize pricing after room assignment
+// =========================================================
+
+const pricing = await applyBookingPricing({
+  booking,
+  room,
+});
+
+console.log("💰 Confirmed booking pricing:", pricing);
+
+// =========================================================
+// Confirm booking
+// =========================================================
+
+booking.status = "reserved";
+booking.room = room._id;
+booking.roomNumber = room.roomNumber;
+booking.handledBy = req.user._id;
+
+await booking.save();
 
     /* -------------------- */
     /* Cleanup notification */
@@ -590,29 +934,93 @@ export const getPendingBookings = async (req, res) => {
 export const cancelBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
+
     const booking = await Booking.findById(bookingId).exec();
-    if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    // =========================================================
+    // Prevent cancelling an already completed stay
+    // =========================================================
+
+    if (booking.status === "checked-out") {
+      return res.status(400).json({
+        message: "A checked-out booking cannot be canceled",
+      });
+    }
+
+    if (booking.status === "canceled") {
+      return res.status(400).json({
+        message: "Booking is already canceled",
+      });
+    }
+
+    // =========================================================
+    // Update booking
+    // =========================================================
 
     booking.status = "canceled";
     await booking.save();
 
-    await Notification.findOneAndDelete({ booking: booking._id });
+    // =========================================================
+    // Financial transaction
+    // =========================================================
 
-    res.json({ message: "Booking canceled successfully", booking });
+    const transaction = await BookingTransaction.findOne({
+      booking: booking._id,
+    });
+
+    if (transaction) {
+      transaction.status = "CANCELLED";
+      transaction.cancelledAt = new Date();
+
+      // IMPORTANT:
+      // Keep the original amount for audit history.
+      // Reports will exclude CANCELLED transactions.
+      await transaction.save();
+    }
+
+    // =========================================================
+    // Remove notification
+    // =========================================================
+
+    await Notification.findOneAndDelete({
+      booking: booking._id,
+    });
+
+    return res.json({
+      message: "Booking canceled successfully",
+      booking,
+      transaction,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Cancel booking error:", err);
+
+    return res.status(500).json({
+      message: err.message,
+    });
   }
 };
 
 
 
 // Receptionist checks in a guest
+// Receptionist checks in a guest
 export const checkInBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
 
     const booking = await Booking.findById(bookingId);
-    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    if (!booking) {
+      return res.status(404).json({
+        error: "Booking not found",
+      });
+    }
 
     if (booking.status !== "reserved") {
       return res.status(400).json({
@@ -621,30 +1029,84 @@ export const checkInBooking = async (req, res) => {
     }
 
     const room = await Room.findById(booking.room);
-    if (!room) return res.status(404).json({ error: "Room not found" });
 
+    if (!room) {
+      return res.status(404).json({
+        error: "Room not found",
+      });
+    }
+
+    // =========================================================
+    // Ensure pricing exists
+    // =========================================================
+
+    if (
+  !booking.pricingBreakdown?.length ||
+  booking.total_charge === null ||
+  booking.total_charge === undefined
+) {
+  await applyBookingPricing({
+    booking,
+    room,
+  });
+
+  await booking.save();
+}
+
+    // =========================================================
+    // Create financial transaction
+    // =========================================================
+
+    const transaction = await createCheckInTransaction({
+      booking,
+      room,
+      staffId: req.user._id,
+    });
+
+    // =========================================================
     // Update booking
+    // =========================================================
+
     booking.status = "checked-in";
     await booking.save();
 
+    // =========================================================
     // Update room
+    // =========================================================
+
     room.status = "occupied";
     room.lastUpdatedBy = req.user._id;
+    room.lastUpdatedAt = new Date();
+
     await room.save();
 
-    res.json({ message: "Guest checked-in successfully", booking });
+    return res.json({
+      message: "Guest checked-in successfully",
+      booking,
+      transaction,
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("❌ Reception check-in error:", error);
+
+    res.status(500).json({
+      error: error.message,
+    });
   }
 };
 
+// Receptionist checks out a guest
 // Receptionist checks out a guest
 export const checkOutBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
 
     const booking = await Booking.findById(bookingId);
-    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    if (!booking) {
+      return res.status(404).json({
+        error: "Booking not found",
+      });
+    }
 
     if (booking.status !== "checked-in") {
       return res.status(400).json({
@@ -653,20 +1115,57 @@ export const checkOutBooking = async (req, res) => {
     }
 
     const room = await Room.findById(booking.room);
-    if (!room) return res.status(404).json({ error: "Room not found" });
 
+    if (!room) {
+      return res.status(404).json({
+        error: "Room not found",
+      });
+    }
+
+    // =========================================================
+    // Finalize financial transaction
+    // =========================================================
+
+    const transaction = await BookingTransaction.findOne({
+      booking: booking._id,
+    });
+
+    if (transaction) {
+      transaction.status = "CHECKED_OUT";
+      transaction.checkOutAt = new Date();
+
+      // Do NOT modify transaction.amount.
+      await transaction.save();
+    }
+
+    // =========================================================
     // Update booking
+    // =========================================================
+
     booking.status = "checked-out";
     await booking.save();
 
+    // =========================================================
     // Update room
+    // =========================================================
+
     room.status = "available";
     room.lastUpdatedBy = req.user._id;
+    room.lastUpdatedAt = new Date();
+
     await room.save();
 
-    res.json({ message: "Guest checked-out successfully", booking });
+    return res.json({
+      message: "Guest checked-out successfully",
+      booking,
+      transaction,
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("❌ Reception check-out error:", error);
+
+    res.status(500).json({
+      error: error.message,
+    });
   }
 };
 
@@ -706,17 +1205,24 @@ export const getAdminOverview = async (req, res) => {
       status: { $ne: "canceled" },
     }).populate("room");
 
-    let totalRevenue = 0;
-    const bookingsByStatus = {};
+    const bookingIds = bookings.map(
+  (booking) => booking._id
+);
 
-    bookings.forEach((b) => {
-      const nights =
-        Math.ceil((new Date(b.checkOutDate) - new Date(b.checkInDate)) / (1000 * 60 * 60 * 24));
-      const price = b.room ? b.room.pricePerNight : 0;
-      totalRevenue += price * nights;
+const transactions =
+  await BookingTransaction.find({
+    booking: { $in: bookingIds },
+    status: {
+      $ne: "CANCELLED",
+    },
+  });
 
-      bookingsByStatus[b.status] = (bookingsByStatus[b.status] || 0) + 1;
-    });
+const totalRevenue =
+  transactions.reduce(
+    (sum, transaction) =>
+      sum + Number(transaction.amount || 0),
+    0
+  );
 
     res.json({
       totalBookings: bookings.length,
