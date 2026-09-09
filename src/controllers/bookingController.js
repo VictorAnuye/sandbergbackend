@@ -103,7 +103,7 @@ const createCheckInTransaction = async ({
 
     rate_type: booking.rate_type,
 
-    amount: Number(booking.total_charge || 0),
+    total_charge: Number(booking.total_charge || 0),
 
     pricingBreakdown:
   booking.pricingBreakdown || [],
@@ -160,24 +160,37 @@ export const createBooking = async (req, res) => {
     }
 
     // 4️⃣ Validate rate type
-    if (!["WEEKDAY", "WEEKEND"].includes(rate_type)) {
-      return res.status(400).json({
-        message: "Invalid rate_type. Expected WEEKDAY or WEEKEND",
-      });
-    }
+    // 4️⃣ Validate rate type
+if (!["WEEKDAY", "WEEKEND"].includes(rate_type)) {
+  return res.status(400).json({
+    message: "Invalid rate_type. Expected WEEKDAY or WEEKEND",
+  });
+}
 
-    const expectedRateType =
-  getRateTypeForDate(checkIn);
+// 5️⃣ Validate dates
+const checkIn = new Date(checkInDate);
+const checkOut = new Date(checkOutDate);
+
+if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+  return res.status(400).json({
+    message: "Invalid booking dates",
+  });
+}
+
+if (checkOut <= checkIn) {
+  return res.status(400).json({
+    message: "Invalid booking dates",
+  });
+}
+
+// 6️⃣ Validate rate type against actual check-in date
+const expectedRateType = getRateTypeForDate(checkIn);
 
 if (rate_type !== expectedRateType) {
   return res.status(400).json({
     message: `Invalid rate_type for check-in date. Expected ${expectedRateType}.`,
   });
 }
-
-    // 5️⃣ Validate dates
-    const checkIn = new Date(checkInDate);
-    const checkOut = new Date(checkOutDate);
 
     if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
       return res.status(400).json({
@@ -1220,7 +1233,7 @@ const transactions =
 const totalRevenue =
   transactions.reduce(
     (sum, transaction) =>
-      sum + Number(transaction.amount || 0),
+      sum + Number(transaction.total_charge || 0),
     0
   );
 
