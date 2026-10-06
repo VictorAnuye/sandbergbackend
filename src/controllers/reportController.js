@@ -104,7 +104,7 @@ const drawTableHeader = (doc, columns, y) => {
   columns.forEach((column) => {
     doc.text(
       column.label,
-      column.x + 3,
+      column.x + 5,
       y + 5,
       {
         width: column.width - 6,
@@ -176,19 +176,6 @@ const drawTableRowBorders = (
       .lineTo(currentX, y + height)
       .stroke();
   });
-};
-
-const ensureSpace = (doc, requiredHeight = 50) => {
-  if (
-    doc.y + requiredHeight >
-    doc.page.height - 60
-  ) {
-    doc.addPage();
-
-    return true;
-  }
-
-  return false;
 };
 
 // =====================================
@@ -416,83 +403,83 @@ for (const transaction of report.breakdown) {
     .fontSize(7)
     .font("Helvetica");
 
-  doc.text(
-    transaction.guestFullName || "-",
-    40,
-    tableY + 7,
-    {
-      width: 85,
-      height: 25,
-    }
-  );
+doc.text(
+  transaction.guestFullName || "-",
+  45,
+  tableY + 7,
+  {
+    width: 75,
+    height: 25,
+  }
+);
 
-  doc.text(
-    transaction.roomNumber || "-",
-    125,
-    tableY + 7,
-    {
-      width: 40,
-    }
-  );
+doc.text(
+  transaction.roomNumber || "-",
+  130,
+  tableY + 7,
+  {
+    width: 30,
+  }
+);
 
-  doc.text(
-    rate,
-    165,
-    tableY + 7,
-    {
-      width: 55,
-    }
-  );
+doc.text(
+  rate,
+  170,
+  tableY + 7,
+  {
+    width: 45,
+  }
+);
 
-  doc.text(
-    staffName,
-    220,
-    tableY + 7,
-    {
-      width: 80,
-      height: 25,
-    }
-  );
+doc.text(
+  staffName,
+  225,
+  tableY + 7,
+  {
+    width: 70,
+    height: 25,
+  }
+);
 
-  doc.text(
-    transaction.status || "-",
-    300,
-    tableY + 7,
-    {
-      width: 70,
-      height: 25,
-    }
-  );
+doc.text(
+  transaction.status || "-",
+  305,
+  tableY + 7,
+  {
+    width: 60,
+    height: 25,
+  }
+);
 
-  doc.text(
-    formatCurrency(
-      transaction.total_charge
-    ),
-    370,
-    tableY + 7,
-    {
-      width: 75,
-      align: "right",
-    }
-  );
+doc.text(
+  formatCurrency(
+    transaction.total_charge
+  ),
+  375,
+  tableY + 7,
+  {
+    width: 65,
+    align: "right",
+  }
+);
 
-  doc.text(
-    checkIn,
-    445,
-    tableY + 7,
-    {
-      width: 65,
-    }
-  );
+doc.text(
+  checkIn,
+  450,
+  tableY + 7,
+  {
+    width: 55,
+  }
+);
 
-  doc.text(
-    checkOut,
-    510,
-    tableY + 7,
-    {
-      width: 45,
-    }
-  );
+doc.text(
+  checkOut,
+  515,
+  tableY + 7,
+  {
+    width: 35,
+  }
+);
 
   drawTableRowBorders(
     doc,
@@ -557,7 +544,7 @@ for (
   doc.switchToPage(i);
 
   const footerY =
-    doc.page.height - 35;
+    doc.page.height - 55;
 
   doc
     .fontSize(8)
