@@ -92,28 +92,90 @@ const formatDateTime = (date) => {
 };
 
 const drawTableHeader = (doc, columns, y) => {
+  const tableLeft = 40;
+  const tableRight = 555;
+  const headerHeight = 22;
+
   doc
     .fontSize(8)
     .font("Helvetica-Bold");
 
+  // Header text
   columns.forEach((column) => {
     doc.text(
       column.label,
-      column.x,
-      y,
+      column.x + 3,
+      y + 5,
       {
-        width: column.width,
+        width: column.width - 6,
         align: column.align || "left",
       }
     );
   });
 
+  // Top border
   doc
-    .moveTo(40, y + 14)
-    .lineTo(555, y + 14)
+    .moveTo(tableLeft, y)
+    .lineTo(tableRight, y)
     .stroke();
 
+  // Bottom border
+  doc
+    .moveTo(tableLeft, y + headerHeight)
+    .lineTo(tableRight, y + headerHeight)
+    .stroke();
+
+  // Vertical column borders
+  let currentX = tableLeft;
+
+  doc
+    .moveTo(currentX, y)
+    .lineTo(currentX, y + headerHeight)
+    .stroke();
+
+  columns.forEach((column) => {
+    currentX += column.width;
+
+    doc
+      .moveTo(currentX, y)
+      .lineTo(currentX, y + headerHeight)
+      .stroke();
+  });
+
   doc.font("Helvetica");
+};
+
+const drawTableRowBorders = (
+  doc,
+  columns,
+  y,
+  height
+) => {
+  const tableLeft = 40;
+  const tableRight = 555;
+
+  // Bottom border
+  doc
+    .moveTo(tableLeft, y + height)
+    .lineTo(tableRight, y + height)
+    .stroke();
+
+  // Vertical borders
+  let currentX = tableLeft;
+
+  doc
+    .moveTo(currentX, y)
+    .lineTo(currentX, y + height)
+    .stroke();
+
+  columns.forEach((column) => {
+    currentX += column.width;
+
+    doc
+      .moveTo(currentX, y)
+      .lineTo(currentX, y + height)
+      .stroke();
+  });
 };
 
 const ensureSpace = (doc, requiredHeight = 50) => {
@@ -309,21 +371,25 @@ const buildReportPDF = ({
   tableY += 22;
 
   for (const transaction of report.breakdown) {
-    if (
-      tableY > doc.page.height - 100
-    ) {
-      doc.addPage();
+    const rowHeight = 32;
+const bottomMargin = 60;
 
-      tableY = 50;
+if (
+  tableY + rowHeight >
+  doc.page.height - bottomMargin
+) {
+  doc.addPage();
 
-      drawTableHeader(
-        doc,
-        columns,
-        tableY
-      );
+  tableY = 50;
 
-      tableY += 22;
-    }
+  drawTableHeader(
+    doc,
+    columns,
+    tableY
+  );
+
+  tableY += 22;
+}
 
     const staffName =
       transaction.staff?.fullName ||
@@ -428,70 +494,89 @@ const buildReportPDF = ({
       }
     );
 
-    tableY += 32;
+drawTableRowBorders(
+  doc,
+  columns,
+  tableY,
+  32
+);
 
-    // ---------------------------------
-    // PRICING BREAKDOWN
-    // ---------------------------------
+tableY += 32;
 
-    if (
-      transaction.pricingBreakdown &&
-      transaction.pricingBreakdown.length > 0
-    ) {
-      if (
-        tableY >
-        doc.page.height - 130
-      ) {
-        doc.addPage();
-        tableY = 50;
-      }
+// ---------------------------------
+// PRICING BREAKDOWN
+// ---------------------------------
 
+if (
+  transaction.pricingBreakdown &&
+  transaction.pricingBreakdown.length > 0
+) {
+  const pricingHeight =
+    19 +
+    transaction.pricingBreakdown.length * 10 +
+    8;
+
+  if (
+    tableY + pricingHeight >
+    doc.page.height - 60
+  ) {
+    doc.addPage();
+
+    tableY = 50;
+
+    drawTableHeader(
+      doc,
+      columns,
+      tableY
+    );
+
+    tableY += 22;
+  }
+
+  doc
+    .fontSize(7)
+    .font("Helvetica-Oblique")
+    .text(
+      "Nightly pricing:",
+      55,
+      tableY
+    );
+
+  tableY += 11;
+
+  transaction.pricingBreakdown.forEach(
+    (night) => {
       doc
         .fontSize(7)
-        .font("Helvetica-Oblique")
+        .font("Helvetica")
         .text(
-          "Nightly pricing:",
-          55,
+          `${formatDate(night.date)}  •  ${night.rate_type}  •  ${formatCurrency(night.applied_rate)}`,
+          65,
           tableY
         );
 
-      tableY += 11;
-
-      transaction.pricingBreakdown.forEach(
-        (night) => {
-          doc
-            .fontSize(7)
-            .font("Helvetica")
-            .text(
-              `${formatDate(
-                night.date
-              )}  •  ${night.rate_type}  •  ${formatCurrency(
-                night.applied_rate
-              )}`,
-              65,
-              tableY
-            );
-
-          tableY += 10;
-        }
-      );
-
-      tableY += 8;
+      tableY += 10;
     }
-  }
+  );
+
+  tableY += 8;
+}  }
 
   // =====================================
   // TOTAL REVENUE
   // =====================================
 
-  if (
-    tableY >
-    doc.page.height - 100
-  ) {
-    doc.addPage();
+const bottomMargin = 60;
+const totalRevenueHeight = 35;
 
-    tableY = 50;
-  }
+if (
+  tableY + totalRevenueHeight >
+  doc.page.height - bottomMargin
+) {
+  doc.addPage();
+
+  tableY = 50;
+}
 
   doc
     .moveTo(40, tableY)
@@ -519,42 +604,49 @@ const buildReportPDF = ({
   // FOOTERS / PAGE NUMBERS
   // =====================================
 
-  const range =
-    doc.bufferedPageRange();
+// =====================================
+// FOOTERS / PAGE NUMBERS
+// =====================================
 
-  for (
-    let i = range.start;
-    i < range.start + range.count;
-    i++
-  ) {
-    doc.switchToPage(i);
+const range =
+  doc.bufferedPageRange();
 
-    doc
-      .fontSize(8)
-      .font("Helvetica")
-      .text(
-        `Sandberg Guest House • Generated ${formatDateTime(
-          new Date()
-        )}`,
-        40,
-        doc.page.height - 35,
-        {
-          width: 400,
-        }
-      );
+for (
+  let i = range.start;
+  i < range.start + range.count;
+  i++
+) {
+  doc.switchToPage(i);
 
-    doc.text(
-      `Page ${i + 1} of ${range.count}`,
-      470,
-      doc.page.height - 35,
+  const footerY =
+    doc.page.height - 40;
+
+  doc
+    .fontSize(8)
+    .font("Helvetica")
+    .text(
+      `Sandberg Guest House • Generated ${formatDateTime(
+        new Date()
+      )}`,
+      40,
+      footerY,
       {
-        width: 85,
-        align: "right",
+        width: 400,
       }
     );
-  }
 
-  doc.end();
+  doc.text(
+    `Page ${i + 1} of ${range.count}`,
+    470,
+    footerY,
+    {
+      width: 85,
+      align: "right",
+    }
+  );
+}
+
+doc.end();
 };
 
 export const generateReport = async (req, res) => {
