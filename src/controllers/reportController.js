@@ -370,155 +370,13 @@ const buildReportPDF = ({
 
   tableY += 22;
 
-  for (const transaction of report.breakdown) {
-    const rowHeight = 32;
-const bottomMargin = 60;
-
-if (
-  tableY + rowHeight >
-  doc.page.height - bottomMargin
-) {
-  doc.addPage();
-
-  tableY = 50;
-
-  drawTableHeader(
-    doc,
-    columns,
-    tableY
-  );
-
-  tableY += 22;
-}
-
-    const staffName =
-      transaction.staff?.fullName ||
-      "ONLINE";
-
-    const rate =
-      transaction.rate_type || "-";
-
-    const checkIn =
-      transaction.checkInAt
-        ? formatDate(
-            transaction.checkInAt
-          )
-        : "-";
-
-    const checkOut =
-      transaction.checkOutAt
-        ? formatDate(
-            transaction.checkOutAt
-          )
-        : "-";
-
-    doc
-      .fontSize(7)
-      .font("Helvetica");
-
-    doc.text(
-      transaction.guestFullName || "-",
-      40,
-      tableY,
-      {
-        width: 85,
-        height: 25,
-      }
-    );
-
-    doc.text(
-      transaction.roomNumber || "-",
-      125,
-      tableY,
-      {
-        width: 40,
-      }
-    );
-
-    doc.text(
-      rate,
-      165,
-      tableY,
-      {
-        width: 55,
-      }
-    );
-
-    doc.text(
-      staffName,
-      220,
-      tableY,
-      {
-        width: 80,
-        height: 25,
-      }
-    );
-
-    doc.text(
-      transaction.status || "-",
-      300,
-      tableY,
-      {
-        width: 70,
-        height: 25,
-      }
-    );
-
-    doc.text(
-      formatCurrency(
-        transaction.total_charge
-      ),
-      370,
-      tableY,
-      {
-        width: 75,
-        align: "right",
-      }
-    );
-
-    doc.text(
-      checkIn,
-      445,
-      tableY,
-      {
-        width: 65,
-      }
-    );
-
-    doc.text(
-      checkOut,
-      510,
-      tableY,
-      {
-        width: 45,
-      }
-    );
-
-drawTableRowBorders(
-  doc,
-  columns,
-  tableY,
-  32
-);
-
-tableY += 32;
-
-// ---------------------------------
-// PRICING BREAKDOWN
-// ---------------------------------
-
-if (
-  transaction.pricingBreakdown &&
-  transaction.pricingBreakdown.length > 0
-) {
-  const pricingHeight =
-    19 +
-    transaction.pricingBreakdown.length * 10 +
-    8;
+for (const transaction of report.breakdown) {
+  const rowHeight = 32;
+  const bottomMargin = 60;
 
   if (
-    tableY + pricingHeight >
-    doc.page.height - 60
+    tableY + rowHeight >
+    doc.page.height - bottomMargin
   ) {
     doc.addPage();
 
@@ -533,34 +391,118 @@ if (
     tableY += 22;
   }
 
+  const staffName =
+    transaction.staff?.fullName ||
+    "ONLINE";
+
+  const rate =
+    transaction.rate_type || "-";
+
+  const checkIn =
+    transaction.checkInAt
+      ? formatDate(
+          transaction.checkInAt
+        )
+      : "-";
+
+  const checkOut =
+    transaction.checkOutAt
+      ? formatDate(
+          transaction.checkOutAt
+        )
+      : "-";
+
   doc
     .fontSize(7)
-    .font("Helvetica-Oblique")
-    .text(
-      "Nightly pricing:",
-      55,
-      tableY
-    );
+    .font("Helvetica");
 
-  tableY += 11;
-
-  transaction.pricingBreakdown.forEach(
-    (night) => {
-      doc
-        .fontSize(7)
-        .font("Helvetica")
-        .text(
-          `${formatDate(night.date)}  •  ${night.rate_type}  •  ${formatCurrency(night.applied_rate)}`,
-          65,
-          tableY
-        );
-
-      tableY += 10;
+  doc.text(
+    transaction.guestFullName || "-",
+    40,
+    tableY + 7,
+    {
+      width: 85,
+      height: 25,
     }
   );
 
-  tableY += 8;
-}  }
+  doc.text(
+    transaction.roomNumber || "-",
+    125,
+    tableY + 7,
+    {
+      width: 40,
+    }
+  );
+
+  doc.text(
+    rate,
+    165,
+    tableY + 7,
+    {
+      width: 55,
+    }
+  );
+
+  doc.text(
+    staffName,
+    220,
+    tableY + 7,
+    {
+      width: 80,
+      height: 25,
+    }
+  );
+
+  doc.text(
+    transaction.status || "-",
+    300,
+    tableY + 7,
+    {
+      width: 70,
+      height: 25,
+    }
+  );
+
+  doc.text(
+    formatCurrency(
+      transaction.total_charge
+    ),
+    370,
+    tableY + 7,
+    {
+      width: 75,
+      align: "right",
+    }
+  );
+
+  doc.text(
+    checkIn,
+    445,
+    tableY + 7,
+    {
+      width: 65,
+    }
+  );
+
+  doc.text(
+    checkOut,
+    510,
+    tableY + 7,
+    {
+      width: 45,
+    }
+  );
+
+  drawTableRowBorders(
+    doc,
+    columns,
+    tableY,
+    rowHeight
+  );
+
+  tableY += rowHeight;
+}
 
   // =====================================
   // TOTAL REVENUE
@@ -600,10 +542,6 @@ if (
       }
     );
 
-  // =====================================
-  // FOOTERS / PAGE NUMBERS
-  // =====================================
-
 // =====================================
 // FOOTERS / PAGE NUMBERS
 // =====================================
@@ -619,7 +557,7 @@ for (
   doc.switchToPage(i);
 
   const footerY =
-    doc.page.height - 40;
+    doc.page.height - 35;
 
   doc
     .fontSize(8)
@@ -632,6 +570,7 @@ for (
       footerY,
       {
         width: 400,
+        lineBreak: false,
       }
     );
 
@@ -642,6 +581,7 @@ for (
     {
       width: 85,
       align: "right",
+      lineBreak: false,
     }
   );
 }
