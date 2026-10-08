@@ -214,7 +214,7 @@ const buildReportPDF = ({
   // LEFT SIDE — REPORT INFORMATION
   // -------------------------------------
   doc
-  .fontSize(22)
+  .fontSize(15)
   .font("Helvetica-Bold")
   .text(
     "SANDBERG GUEST HOUSE",
