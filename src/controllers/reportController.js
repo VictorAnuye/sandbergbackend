@@ -214,18 +214,6 @@ const buildReportPDF = ({
   // LEFT SIDE — REPORT INFORMATION
   // -------------------------------------
 
-  doc
-    .fontSize(22)
-    .font("Helvetica-Bold")
-    .text(
-      "SANDBERG GUEST HOUSE",
-      40,
-      headerTop,
-      {
-        width: 270,
-        lineBreak: false,
-      }
-    );
 
   doc
     .fontSize(16)
@@ -378,17 +366,6 @@ const buildReportPDF = ({
     );
 
   let tableY = 175;
-
-  // =====================================
-  // TRANSACTION BREAKDOWN
-  // =====================================
-
-  doc
-    .fontSize(13)
-    .font("Helvetica-Bold")
-    .text("Transaction Breakdown");
-
-  doc.moveDown(0.7);
 
 
   const columns = [
