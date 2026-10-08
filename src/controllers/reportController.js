@@ -213,7 +213,18 @@ const buildReportPDF = ({
   // -------------------------------------
   // LEFT SIDE — REPORT INFORMATION
   // -------------------------------------
-
+  doc
+  .fontSize(22)
+  .font("Helvetica-Bold")
+  .text(
+    "SANDBERG GUEST HOUSE",
+    40,
+    headerTop,
+    {
+      width: 285,
+      lineBreak: false,
+    }
+  );
 
   doc
     .fontSize(16)
@@ -609,43 +620,42 @@ doc.text(
 
   const signatureY =
     doc.page.height - 125;
+doc
+  .fontSize(9)
+  .font("Helvetica-Bold")
+  .text(
+    "Receptionist Sign",
+    40,
+    signatureY,
+    {
+      width: 200,
+      lineBreak: false,
+    }
+  );
 
-  doc
-    .fontSize(9)
-    .font("Helvetica-Bold")
-    .text(
-      "Receptionist Sign",
-      40,
-      signatureY,
-      {
-        width: 200,
-        lineBreak: false,
-      }
-    );
+doc
+  .moveTo(40, signatureY + 45)
+  .lineTo(240, signatureY + 45)
+  .stroke();
 
-  doc
-    .moveTo(40, signatureY + 25)
-    .lineTo(240, signatureY + 25)
-    .stroke();
+doc
+  .fontSize(9)
+  .font("Helvetica-Bold")
+  .text(
+    "Manager Sign",
+    355,
+    signatureY,
+    {
+      width: 200,
+      align: "right",
+      lineBreak: false,
+    }
+  );
 
-  doc
-    .fontSize(9)
-    .font("Helvetica-Bold")
-    .text(
-      "Manager Sign",
-      355,
-      signatureY,
-      {
-        width: 200,
-        align: "right",
-        lineBreak: false,
-      }
-    );
-
-  doc
-    .moveTo(355, signatureY + 25)
-    .lineTo(555, signatureY + 25)
-    .stroke();
+doc
+  .moveTo(355, signatureY + 45)
+  .lineTo(555, signatureY + 45)
+  .stroke();
 
 // =====================================
 // FOOTERS / PAGE NUMBERS
