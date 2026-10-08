@@ -107,7 +107,7 @@ const drawTableHeader = (doc, columns, y) => {
       column.x + 5,
       y + 5,
       {
-        width: column.width - 6,
+        width: column.width - 10,
         align: column.align || "left",
       }
     );
@@ -205,50 +205,100 @@ const buildReportPDF = ({
   doc.pipe(res);
 
   // =====================================
-  // HEADER
+  // HEADER + SUMMARY
   // =====================================
+
+  const headerTop = 40;
+
+  // -------------------------------------
+  // LEFT SIDE — REPORT INFORMATION
+  // -------------------------------------
 
   doc
     .fontSize(22)
     .font("Helvetica-Bold")
-    .text("SANDBERG GUEST HOUSE");
+    .text(
+      "SANDBERG GUEST HOUSE",
+      40,
+      headerTop,
+      {
+        width: 270,
+        lineBreak: false,
+      }
+    );
 
   doc
     .fontSize(16)
     .font("Helvetica-Bold")
-    .moveDown(0.5)
-    .text("Operational Report");
+    .text(
+      "Operational Report",
+      40,
+      headerTop + 32,
+      {
+        width: 270,
+        lineBreak: false,
+      }
+    );
 
   doc
     .fontSize(10)
     .font("Helvetica")
-    .moveDown(0.5)
     .text(
-      `Report Period: ${formatDate(report.period.startDate)} - ${formatDate(report.period.endDate)}`
+      `Report Period: ${formatDate(
+        report.period.startDate
+      )} - ${formatDate(
+        report.period.endDate
+      )}`,
+      40,
+      headerTop + 58,
+      {
+        width: 270,
+        lineBreak: false,
+      }
     );
 
   doc.text(
-    `Scope: ${report.scope}`
+    `Scope: ${report.scope}`,
+    40,
+    headerTop + 74,
+    {
+      width: 270,
+      lineBreak: false,
+    }
   );
 
   if (report.staff) {
     doc.text(
-      `Receptionist: ${report.staff.fullName}`
+      `Receptionist: ${report.staff.fullName}`,
+      40,
+      headerTop + 90,
+      {
+        width: 270,
+        lineBreak: false,
+      }
     );
   }
 
-  doc.moveDown(1);
+  // -------------------------------------
+  // RIGHT SIDE — SUMMARY
+  // -------------------------------------
 
-  // =====================================
-  // SUMMARY
-  // =====================================
+  const summaryX = 330;
+  const summaryY = headerTop + 25;
+  const summaryWidth = 225;
 
   doc
     .fontSize(13)
     .font("Helvetica-Bold")
-    .text("Summary");
-
-  doc.moveDown(0.5);
+    .text(
+      "Summary",
+      summaryX,
+      summaryY,
+      {
+        width: summaryWidth,
+        lineBreak: false,
+      }
+    );
 
   const summary = report.summary;
 
@@ -275,22 +325,59 @@ const buildReportPDF = ({
     ],
   ];
 
+  let summaryYPosition =
+    summaryY + 22;
+
   summaryItems.forEach(
     ([label, value]) => {
       doc
-        .fontSize(10)
+        .fontSize(9)
         .font("Helvetica-Bold")
-        .text(label, {
-          continued: true,
-        });
+        .text(
+          label,
+          summaryX,
+          summaryYPosition,
+          {
+            width: 120,
+            lineBreak: false,
+          }
+        );
 
       doc
         .font("Helvetica")
-        .text(`    ${value}`);
+        .text(
+          value,
+          summaryX + 120,
+          summaryYPosition,
+          {
+            width: 105,
+            align: "right",
+            lineBreak: false,
+          }
+        );
+
+      summaryYPosition += 14;
     }
   );
 
-  doc.moveDown(1);
+  // -------------------------------------
+  // TRANSACTION BREAKDOWN TITLE
+  // -------------------------------------
+
+  doc
+    .fontSize(13)
+    .font("Helvetica-Bold")
+    .text(
+      "Transaction Breakdown",
+      40,
+      155,
+      {
+        width: 515,
+        lineBreak: false,
+      }
+    );
+
+  let tableY = 175;
 
   // =====================================
   // TRANSACTION BREAKDOWN
@@ -303,7 +390,6 @@ const buildReportPDF = ({
 
   doc.moveDown(0.7);
 
-  let tableY = doc.y;
 
   const columns = [
     {
@@ -358,7 +444,7 @@ const buildReportPDF = ({
   tableY += 22;
 
 for (const transaction of report.breakdown) {
-  const rowHeight = 32;
+  const rowHeight = 25;
   const bottomMargin = 60;
 
   if (
@@ -367,7 +453,7 @@ for (const transaction of report.breakdown) {
   ) {
     doc.addPage();
 
-    tableY = 50;
+    tableY = 55;
 
     drawTableHeader(
       doc,
@@ -494,28 +580,38 @@ doc.text(
   // =====================================
   // TOTAL REVENUE
   // =====================================
+  // =====================================
+  // TOTAL REVENUE
+  // =====================================
 
-const bottomMargin = 60;
-const totalRevenueHeight = 35;
+  const totalRevenueHeight = 30;
 
-if (
-  tableY + totalRevenueHeight >
-  doc.page.height - bottomMargin
-) {
-  doc.addPage();
+  if (
+    tableY + totalRevenueHeight >
+    doc.page.height - 125
+  ) {
+    doc.addPage();
 
-  tableY = 50;
-}
+    tableY = 55;
+
+    drawTableHeader(
+      doc,
+      columns,
+      tableY
+    );
+
+    tableY += 22;
+  }
 
   doc
     .moveTo(40, tableY)
     .lineTo(555, tableY)
     .stroke();
 
-  tableY += 15;
+  tableY += 8;
 
   doc
-    .fontSize(13)
+    .fontSize(12)
     .font("Helvetica-Bold")
     .text(
       `Total Revenue: ${formatCurrency(
@@ -526,8 +622,53 @@ if (
       {
         width: 515,
         align: "right",
+        lineBreak: false,
       }
     );
+
+  // =====================================
+  // SIGNATURES
+  // =====================================
+
+  const signatureY =
+    doc.page.height - 125;
+
+  doc
+    .fontSize(9)
+    .font("Helvetica-Bold")
+    .text(
+      "Receptionist Sign",
+      40,
+      signatureY,
+      {
+        width: 200,
+        lineBreak: false,
+      }
+    );
+
+  doc
+    .moveTo(40, signatureY + 25)
+    .lineTo(240, signatureY + 25)
+    .stroke();
+
+  doc
+    .fontSize(9)
+    .font("Helvetica-Bold")
+    .text(
+      "Manager Sign",
+      355,
+      signatureY,
+      {
+        width: 200,
+        align: "right",
+        lineBreak: false,
+      }
+    );
+
+  doc
+    .moveTo(355, signatureY + 25)
+    .lineTo(555, signatureY + 25)
+    .stroke();
 
 // =====================================
 // FOOTERS / PAGE NUMBERS
