@@ -481,100 +481,38 @@ for (const [index, transaction] of report.breakdown.entries()) {
         )
       : "-";
 
+
   doc
     .fontSize(7)
     .font("Helvetica");
 
-  doc.text(
-  String(index + 1),
-  45,
-  tableY + 7,
-  {
-    width: 20,
-  }
-);
-// Guest
-doc.text(
-  transaction.guestFullName || "-",
-  75,
-  tableY + 7,
-  {
-    width: 65,
-    height: 25,
-  }
-);
+  const values = [
+    String(index + 1),
+    transaction.guestFullName || "-",
+    String(transaction.roomNumber || "-"),
+    rate,
+    staffName,
+    transaction.status || "-",
+    formatCurrency(transaction.total_charge),
+    checkIn,
+    checkOut,
+  ];
 
-// Room
-doc.text(
-  transaction.roomNumber || "-",
-  150,
-  tableY + 7,
-  {
-    width: 30,
-  }
-);
+  columns.forEach((column, columnIndex) => {
+    doc.text(
+      values[columnIndex],
+      column.x + 5,
+      tableY + 7,
+      {
+        width: column.width - 10,
+        height: 17,
+        align: column.align || "left",
+        ellipsis: true,
+        lineBreak: false,
+      }
+    );
+  });
 
-// Rate
-doc.text(
-  rate,
-  190,
-  tableY + 7,
-  {
-    width: 40,
-  }
-);
-
-// Staff
-doc.text(
-  staffName,
-  240,
-  tableY + 7,
-  {
-    width: 65,
-    height: 25,
-  }
-);
-
-// Status
-doc.text(
-  transaction.status || "-",
-  315,
-  tableY + 7,
-  {
-    width: 55,
-    height: 25,
-  }
-);
-
-doc.text(
-  formatCurrency(
-    transaction.total_charge
-  ),
-  375,
-  tableY + 7,
-  {
-    width: 65,
-    align: "right",
-  }
-);
-
-doc.text(
-  checkIn,
-  450,
-  tableY + 7,
-  {
-    width: 55,
-  }
-);
-
-doc.text(
-  checkOut,
-  515,
-  tableY + 7,
-  {
-    width: 35,
-  }
-);
 
   drawTableRowBorders(
     doc,
@@ -732,55 +670,63 @@ const getReportBookingPrice = (transaction) => {
       ? transaction.booking
       : null;
 
-  // A valid saved discount takes priority.
-  if (
-    booking?.hasDiscount === true &&
-    Number.isFinite(Number(booking.discountedRatePerNight)) &&
-    Number(booking.discountedRatePerNight) > 0
-  ) {
-    const checkIn = booking.checkInDate;
-    const checkOut = booking.checkOutDate;
+  const isValidAmount = (value) =>
+    value !== null &&
+    value !== undefined &&
+    value !== "" &&
+    Number.isFinite(Number(value));
 
-    if (checkIn && checkOut) {
-      const nights = dayjs(checkOut).startOf("day")
-        .diff(dayjs(checkIn).startOf("day"), "day");
-
-      if (nights > 0) {
-        return Number(booking.discountedRatePerNight) * nights;
-      }
+  // The booking snapshot is the source of truth
+  // for a discounted booking.
+  if (booking?.hasDiscount === true) {
+    if (isValidAmount(booking.total_charge)) {
+      return Number(booking.total_charge);
     }
 
-    // If dates are unavailable, use the saved booking total.
-    if (Number.isFinite(Number(booking.total_charge))) {
-      return Number(booking.total_charge);
+    // Fallback for older discounted bookings without a saved total.
+    const discountedRate = Number(
+      booking.discountedRatePerNight
+    );
+
+    if (
+      Number.isFinite(discountedRate) &&
+      discountedRate > 0 &&
+      booking.checkInDate &&
+      booking.checkOutDate
+    ) {
+      const checkIn = dayjs(booking.checkInDate)
+        .tz("Africa/Lagos")
+        .startOf("day");
+
+      const checkOut = dayjs(booking.checkOutDate)
+        .tz("Africa/Lagos")
+        .startOf("day");
+
+      const nights = checkOut.diff(checkIn, "day");
+
+      if (nights > 0) {
+        return discountedRate * nights;
+      }
     }
   }
 
-  // Preserve the original historical transaction amount
-  // for bookings without a discount.
-  if (
-    transaction.total_charge !== null &&
-    transaction.total_charge !== undefined &&
-    Number.isFinite(Number(transaction.total_charge))
-  ) {
+  // Use the recorded transaction amount for normal bookings.
+  if (isValidAmount(transaction.total_charge)) {
     return Number(transaction.total_charge);
   }
 
-  // Fallback for older transactions without a saved total.
-  if (
-    booking?.total_charge !== null &&
-    booking?.total_charge !== undefined &&
-    Number.isFinite(Number(booking.total_charge))
-  ) {
+  if (isValidAmount(booking?.total_charge)) {
     return Number(booking.total_charge);
   }
 
-  // Last fallback: use the saved nightly pricing breakdown.
-  if (Array.isArray(transaction.pricingBreakdown) &&
-      transaction.pricingBreakdown.length > 0) {
+  // Legacy fallback: sum the nightly rates.
+  if (
+    Array.isArray(transaction.pricingBreakdown) &&
+    transaction.pricingBreakdown.length > 0
+  ) {
     return transaction.pricingBreakdown.reduce(
       (sum, item) =>
-        sum + Number(item.applied_rate ?? 0),
+        sum + Number(item.applied_rate || 0),
       0
     );
   }
