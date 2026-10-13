@@ -71,6 +71,17 @@ const bookingSchema = new mongoose.Schema(
   default: null,
 },
 
+hasDiscount: {
+  type: Boolean,
+  default: false,
+},
+
+discountedRatePerNight: {
+  type: Number,
+  min: 0,
+  default: null,
+},
+
 applied_rate: {
   type: Number,
   min: 0,

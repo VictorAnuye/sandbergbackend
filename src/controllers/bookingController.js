@@ -29,6 +29,7 @@ const VALID_RATE_TYPES = ["WEEKDAY", "WEEKEND"];
  * This is intentionally stored on Booking so that future
  * changes to Room pricing do not alter an existing booking.
  */
+
 const applyBookingPricing = async ({
   booking,
   room,
@@ -39,20 +40,48 @@ const applyBookingPricing = async ({
     );
   }
 
-  const pricing = calculateBookingTotal({
+  const normalPricing = calculateBookingTotal({
     room,
     checkIn: booking.checkInDate,
     checkOut: booking.checkOutDate,
   });
 
-  booking.rate_type =
-    pricing.rateType;
+  const discountEnabled =
+    booking.hasDiscount === true;
 
-  booking.applied_rate =
-    pricing.rate;
+  let pricing = normalPricing;
 
-  booking.total_charge =
-    pricing.total;
+  if (discountEnabled) {
+    const customRate = Number(
+      booking.discountedRatePerNight
+    );
+
+    if (
+      !Number.isFinite(customRate) ||
+      customRate <= 0
+    ) {
+      throw new Error(
+        "Invalid saved discounted rate per night."
+      );
+    }
+
+    pricing = {
+      ...normalPricing,
+      rate: customRate,
+      total:
+        customRate * normalPricing.nights,
+      breakdown: normalPricing.breakdown.map(
+        (item) => ({
+          ...item,
+          rate: customRate,
+        })
+      ),
+    };
+  }
+
+  booking.rate_type = pricing.rateType;
+  booking.applied_rate = pricing.rate;
+  booking.total_charge = pricing.total;
 
   booking.pricingBreakdown =
     pricing.breakdown.map((item) => ({
@@ -63,6 +92,7 @@ const applyBookingPricing = async ({
 
   return pricing;
 };
+
 
 
 /**
@@ -143,6 +173,8 @@ export const createBooking = async (req, res) => {
       checkOutDate,
       roomNumber,
       rate_type,
+      hasDiscount = false,
+      discountedRatePerNight,
     } = req.body;
 
     // 3️⃣ Validate required fields
@@ -190,6 +222,28 @@ if (rate_type !== expectedRateType) {
   return res.status(400).json({
     message: `Invalid rate_type for check-in date. Expected ${expectedRateType}.`,
   });
+}
+
+if (
+  hasDiscount === true ||
+  hasDiscount === "true"
+) {
+  const customRate = Number(
+    discountedRatePerNight
+  );
+
+  if (
+    discountedRatePerNight === undefined ||
+    discountedRatePerNight === null ||
+    String(discountedRatePerNight).trim() === "" ||
+    !Number.isFinite(customRate) ||
+    customRate <= 0
+  ) {
+    return res.status(400).json({
+      message:
+        "A valid discounted rate per night is required",
+    });
+  }
 }
 
     if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
@@ -256,11 +310,40 @@ if (rate_type !== expectedRateType) {
     }
 
     // 9️⃣ Calculate selected rate
-  const pricing = calculateBookingTotal({
+const normalPricing = calculateBookingTotal({
   room: selectedRoom,
   checkIn,
   checkOut,
 });
+
+const discountEnabled =
+  hasDiscount === true ||
+  hasDiscount === "true";
+
+let pricing = normalPricing;
+
+if (discountEnabled) {
+  const customRate = Number(
+    discountedRatePerNight
+  );
+
+  const breakdown = normalPricing.breakdown.map(
+    (item) => ({
+      ...item,
+      rate: customRate,
+    })
+  );
+
+  pricing = {
+    ...normalPricing,
+    rate: customRate,
+    total: customRate * normalPricing.nights,
+    breakdown,
+  };
+}
+
+console.log("💰 Booking pricing:", pricing);
+
     console.log("💰 Booking pricing:", pricing);
 
     // 🔟 Create booking
@@ -281,10 +364,19 @@ if (rate_type !== expectedRateType) {
       source: "reception",
       status: "reserved",
 
-      // NEW PRICING SNAPSHOT
+
+      // DISCOUNT SETTINGS
+      hasDiscount: discountEnabled,
+
+      discountedRatePerNight: discountEnabled
+        ? Number(discountedRatePerNight)
+        : null,
+
+      // PRICING SNAPSHOT
       rate_type: pricing.rateType,
-applied_rate: pricing.rate,
-total_charge: pricing.total,
+      applied_rate: pricing.rate,
+      total_charge: pricing.total,
+
 
 pricingBreakdown: pricing.breakdown.map(
   (item) => ({
@@ -370,10 +462,12 @@ export const checkIn = async (req, res) => {
   booking.total_charge === null ||
   booking.total_charge === undefined
 ) {
+  
   await applyBookingPricing({
     booking,
-    room,
+    room: booking.room,
   });
+
 
   await booking.save();
 }

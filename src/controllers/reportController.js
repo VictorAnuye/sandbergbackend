@@ -381,6 +381,11 @@ const buildReportPDF = ({
 
   const columns = [
     {
+  label: "S/N",
+  x: 40,
+  width: 30,
+},
+    {
       label: "Guest",
       x: 40,
       width: 85,
@@ -431,7 +436,7 @@ const buildReportPDF = ({
 
   tableY += 22;
 
-for (const transaction of report.breakdown) {
+for (const [index, transaction] of report.breakdown.entries()) {
   const rowHeight = 25;
   const bottomMargin = 60;
 
@@ -477,50 +482,63 @@ for (const transaction of report.breakdown) {
     .fontSize(7)
     .font("Helvetica");
 
-doc.text(
-  transaction.guestFullName || "-",
+  doc.text(
+  String(index + 1),
   45,
   tableY + 7,
   {
-    width: 75,
+    width: 20,
+  }
+);
+// Guest
+doc.text(
+  transaction.guestFullName || "-",
+  75,
+  tableY + 7,
+  {
+    width: 65,
     height: 25,
   }
 );
 
+// Room
 doc.text(
   transaction.roomNumber || "-",
-  130,
+  150,
   tableY + 7,
   {
     width: 30,
   }
 );
 
+// Rate
 doc.text(
   rate,
-  170,
+  190,
   tableY + 7,
   {
-    width: 45,
+    width: 40,
   }
 );
 
+// Staff
 doc.text(
   staffName,
-  225,
+  240,
   tableY + 7,
   {
-    width: 70,
+    width: 65,
     height: 25,
   }
 );
 
+// Status
 doc.text(
   transaction.status || "-",
-  305,
+  315,
   tableY + 7,
   {
-    width: 60,
+    width: 55,
     height: 25,
   }
 );
