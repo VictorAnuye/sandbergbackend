@@ -379,54 +379,57 @@ const buildReportPDF = ({
   let tableY = 175;
 
 
-  const columns = [
-    {
-  label: "S/N",
-  x: 40,
-  width: 30,
-},
-    {
-      label: "Guest",
-      x: 40,
-      width: 85,
-    },
-    {
-      label: "Room",
-      x: 125,
-      width: 40,
-    },
-    {
-      label: "Rate",
-      x: 165,
-      width: 55,
-    },
-    {
-      label: "Staff",
-      x: 220,
-      width: 80,
-    },
-    {
-      label: "Status",
-      x: 300,
-      width: 70,
-    },
-    {
-      label: "Total",
-      x: 370,
-      width: 75,
-      align: "right",
-    },
-    {
-      label: "Check-in",
-      x: 445,
-      width: 65,
-    },
-    {
-      label: "Check-out",
-      x: 510,
-      width: 45,
-    },
-  ];
+ 
+const columns = [
+  {
+    label: "S/N",
+    x: 40,
+    width: 30,
+    align: "center",
+  },
+  {
+    label: "Guest",
+    x: 70,
+    width: 100,
+  },
+  {
+    label: "Room",
+    x: 170,
+    width: 45,
+    align: "center",
+  },
+  {
+    label: "Rate",
+    x: 215,
+    width: 55,
+  },
+  {
+    label: "Staff",
+    x: 270,
+    width: 75,
+  },
+  {
+    label: "Status",
+    x: 345,
+    width: 65,
+  },
+  {
+    label: "Total",
+    x: 410,
+    width: 65,
+    align: "right",
+  },
+  {
+    label: "Check-in",
+    x: 475,
+    width: 40,
+  },
+  {
+    label: "Check-out",
+    x: 515,
+    width: 40,
+  },
+];
 
   drawTableHeader(
     doc,
@@ -722,6 +725,69 @@ for (
 doc.end();
 };
 
+const getReportBookingPrice = (transaction) => {
+  const booking =
+    transaction.booking &&
+    typeof transaction.booking === "object"
+      ? transaction.booking
+      : null;
+
+  // A valid saved discount takes priority.
+  if (
+    booking?.hasDiscount === true &&
+    Number.isFinite(Number(booking.discountedRatePerNight)) &&
+    Number(booking.discountedRatePerNight) > 0
+  ) {
+    const checkIn = booking.checkInDate;
+    const checkOut = booking.checkOutDate;
+
+    if (checkIn && checkOut) {
+      const nights = dayjs(checkOut).startOf("day")
+        .diff(dayjs(checkIn).startOf("day"), "day");
+
+      if (nights > 0) {
+        return Number(booking.discountedRatePerNight) * nights;
+      }
+    }
+
+    // If dates are unavailable, use the saved booking total.
+    if (Number.isFinite(Number(booking.total_charge))) {
+      return Number(booking.total_charge);
+    }
+  }
+
+  // Preserve the original historical transaction amount
+  // for bookings without a discount.
+  if (
+    transaction.total_charge !== null &&
+    transaction.total_charge !== undefined &&
+    Number.isFinite(Number(transaction.total_charge))
+  ) {
+    return Number(transaction.total_charge);
+  }
+
+  // Fallback for older transactions without a saved total.
+  if (
+    booking?.total_charge !== null &&
+    booking?.total_charge !== undefined &&
+    Number.isFinite(Number(booking.total_charge))
+  ) {
+    return Number(booking.total_charge);
+  }
+
+  // Last fallback: use the saved nightly pricing breakdown.
+  if (Array.isArray(transaction.pricingBreakdown) &&
+      transaction.pricingBreakdown.length > 0) {
+    return transaction.pricingBreakdown.reduce(
+      (sum, item) =>
+        sum + Number(item.applied_rate ?? 0),
+      0
+    );
+  }
+
+  return 0;
+};
+
 export const generateReport = async (req, res) => {
   try {
     const {
@@ -857,14 +923,18 @@ export const generateReport = async (req, res) => {
     // FETCH TRANSACTIONS
     // ---------------------------------
 
-    const transactions =
-      await BookingTransaction.find(
-        transactionFilter
-      )
-        .populate("staff", "fullName")
-        .populate("room", "roomNumber roomType")
-        .sort({ createdAt: 1 })
-        .lean();
+    
+const transactions =
+  await BookingTransaction.find(transactionFilter)
+    .populate("staff", "fullName")
+    .populate("room", "roomNumber roomType weekday_price weekend_price pricePerNight")
+    .populate(
+      "booking",
+      "hasDiscount discountedRatePerNight total_charge applied_rate pricingBreakdown checkInDate checkOutDate rate_type"
+    )
+    .sort({ createdAt: 1 })
+    .lean();
+
 
     // ---------------------------------
     // SUMMARY
@@ -902,29 +972,26 @@ export const generateReport = async (req, res) => {
     // Cancelled transactions are excluded.
     // ---------------------------------
 
-    const totalRevenue = transactions.reduce(
-      (total, transaction) => {
-        const checkInIsInRange =
-          transaction.checkInAt &&
-          transaction.checkInAt >= start &&
-          transaction.checkInAt <= end;
+    
+const totalRevenue = transactions.reduce(
+  (total, transaction) => {
+    const checkInIsInRange =
+      transaction.checkInAt &&
+      transaction.checkInAt >= start &&
+      transaction.checkInAt <= end;
 
-        if (
-          checkInIsInRange &&
-          transaction.status !== "CANCELLED"
-        ) {
-          return (
-            total +
-            Number(
-              transaction.total_charge ?? 0
-            )
-          );
-        }
+    if (
+      checkInIsInRange &&
+      transaction.status !== "CANCELLED"
+    ) {
+      return total + getReportBookingPrice(transaction);
+    }
 
-        return total;
-      },
-      0
-    );
+    return total;
+  },
+  0
+);
+
 
     // ---------------------------------
     // FORMAT TRANSACTION BREAKDOWN
@@ -950,12 +1017,11 @@ export const generateReport = async (req, res) => {
           null,
 
         rate_type:
-          transaction.rate_type ?? null,
+  transaction.booking?.hasDiscount === true
+    ? "DISCOUNT"
+    : transaction.rate_type ?? null,
 
-        total_charge:
-          Number(
-            transaction.total_charge ?? 0
-          ),
+        total_charge: getReportBookingPrice(transaction),
 
         pricingBreakdown:
           transaction.pricingBreakdown ?? [],
